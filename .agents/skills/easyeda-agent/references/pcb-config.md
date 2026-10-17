@@ -25,6 +25,11 @@ easyeda doc reload --project ceshi
 easyeda pcb config get --project ceshi > config-after.json
 ```
 
+题设「信号最小 10mil」是按 LQFP 定的。0.4 mm 间距 QFN（焊盘 7.9 mil）相邻两根 10 mil 并行出线只剩
+5.75 mil，最小线宽须降到 8（`--min 8 --default 10`，记录理由）；扇出最密的网另建规则绑类，如
+`pcb config track --name SIG8 --copy-from copperThickness1oz --min 8 --default 8` + `SPI_Class`，否则官方路由器
+按 10 mil 默认值走不通（ESP32-S3R8 现场 SPI 3/6 失败，改 8 mil 后按序全通）。
+
 电源网列表先与当前原理图和 `pcb nets` 对账，不能从网名自动猜全。样例中的三个网只适用于
 该题已确认的连接。`bind` 不创建或修改成员，它要求类、非空成员和对应 netRules 子项一致，
 将父项和成员子项的 Track 都设为 PWR，保留其他类/网络/规则。
