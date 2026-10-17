@@ -234,3 +234,15 @@ func TestSilkOverPadReproducesDemoNeighbourLabelAndSkipsHiddenText(t *testing.T)
 		t.Fatalf("hidden attribute text is not printed and must not be judged, got %+v", got)
 	}
 }
+
+func TestViaInPadUsesPadRectangle(t *testing.T) {
+	pad := pcbPadP{Designator: "U2", Number: "4", Net: "GND", X: 569, Y: 15, W: 88.6, H: 24.8}
+	clear := pcbViaP{ID: "dogbone", Net: "GND", X: 569, Y: 52, Dia: 24}
+	on := pcbViaP{ID: "onpad", Net: "GND", X: 600, Y: 20, Dia: 24}
+	if got := findViaInPad([]pcbViaP{clear}, []pcbPadP{pad}); len(got) != 0 {
+		t.Fatalf("dog-bone via 12.5 mil clear of the pad flagged: %+v", got)
+	}
+	if got := findViaInPad([]pcbViaP{on}, []pcbPadP{pad}); len(got) != 1 {
+		t.Fatalf("via on the pad not flagged: %+v", got)
+	}
+}

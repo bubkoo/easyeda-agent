@@ -4979,3 +4979,24 @@ test('pcbRouteAuto: locked copper the router removed is reported, not hidden', a
 	assert.deepEqual(res.result.removedPrimitiveIds, ['xtal']);
 	delete (globalThis as any).eda;
 });
+
+// ─── pcb.route.rip_up: embedded vias stay with their footprint ────────────
+import { pcbRouteRipUp } from './actions';
+
+test('pcbRouteRipUp: skips footprint-embedded vias, deletes standalone ones', async () => {
+	const deleted: Record<string, string[]> = {};
+	const prim = (id: string, net: string, layer?: number) => ({ getState_PrimitiveId: () => id, getState_Net: () => net, getState_Layer: () => layer, getState_PrimitiveLock: () => false });
+	(globalThis as any).eda = {
+		pcb_PrimitiveComponent: { getAll: async () => [{ getState_PrimitiveId: () => '6ea58e4ac6716d3d' }] },
+		pcb_PrimitiveLine: { getAll: async () => [prim('t1', 'GND', 1)], delete: async (ids: string[]) => { deleted.lines = ids; return true; } },
+		pcb_PrimitiveArc: { getAll: async () => [], delete: async () => true },
+		pcb_PrimitiveVia: {
+			getAll: async () => [prim('6ea58e4ac6716d3de184', 'GND'), prim('v9', 'GND')],
+			delete: async (ids: string[]) => { if (ids.some(i => i.startsWith('6ea58e4ac6716d3de'))) throw new Error('embedded'); deleted.vias = ids; return true; },
+		},
+	};
+	const res: any = await pcbRouteRipUp({});
+	assert.deepEqual(deleted.vias, ['v9']);
+	assert.equal(res.result.vias.requested, 1);
+	delete (globalThis as any).eda;
+});

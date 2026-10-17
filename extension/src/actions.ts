@@ -14613,7 +14613,7 @@ const pcbTrackLock: Handler = async (payload) => {
 	return { result: { locked, counts, total: counts.lines + counts.arcs + counts.vias + counts.fills, failures } };
 };
 
-const pcbRouteRipUp: Handler = async (payload) => {
+export const pcbRouteRipUp: Handler = async (payload) => {
 	// Optional net filter (string or string[]); no net → rip up ALL routing.
 	const rawNet = payload.net ?? payload.nets;
 	let nets: Array<string> | null = null;
@@ -14643,8 +14643,13 @@ const pcbRouteRipUp: Handler = async (payload) => {
 	const arcIds = (arcs ?? [])
 		.filter(a => (!want || want.has(a.getState_Net())) && onCopper(a.getState_Layer()) && !a.getState_PrimitiveLock())
 		.map(a => a.getState_PrimitiveId());
+	// Footprint-embedded vias (QFN EPAD thermal vias) belong to their component;
+	// the via API cannot delete them and a batch containing one throws (#120).
+	let componentIds: Array<string>;
+	try { componentIds = ((await eda.pcb_PrimitiveComponent.getAll()) ?? []).map(c => c.getState_PrimitiveId()); }
+	catch (err) { throw edaError(err, 'Failed to read components for embedded-via ownership during rip-up.'); }
 	const viaIds = (vias ?? [])
-		.filter(v => (!want || want.has(v.getState_Net())) && !v.getState_PrimitiveLock())
+		.filter(v => (!want || want.has(v.getState_Net())) && !v.getState_PrimitiveLock() && !pcbEmbeddedParent(v.getState_PrimitiveId(), componentIds))
 		.map(v => v.getState_PrimitiveId());
 
 	// delete() returns an OVERALL boolean (a partial/failed batch is possible), so

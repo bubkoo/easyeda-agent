@@ -222,7 +222,7 @@ func findViaInPad(vias []pcbViaP, pads []pcbPadP) []pcbCheckFinding {
 			if strings.TrimSpace(p.Net) != net {
 				continue
 			}
-			if math.Hypot(v.X-p.X, v.Y-p.Y) > p.halfExt() {
+			if !viaOverlapsPad(v, p) {
 				continue
 			}
 			ref := p.Designator
@@ -239,6 +239,17 @@ func findViaInPad(vias []pcbViaP, pads []pcbPadP) []pcbCheckFinding {
 		}
 	}
 	return out
+}
+
+// viaOverlapsPad reports whether the via's copper reaches the pad's copper.
+// W/H are the pad's world-aligned extents; judging by the max half-extent as a
+// circle flagged a dog-bone via 12.5 mil clear of a long SOIC pad (an 88.6×24.8
+// pad became a 44 mil disc). The nominal disc stays the fallback without a size.
+func viaOverlapsPad(v pcbViaP, p pcbPadP) bool {
+	if p.W > 0 && p.H > 0 {
+		return rectPtDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, v.X, v.Y) < v.Dia/2
+	}
+	return math.Hypot(v.X-p.X, v.Y-p.Y) <= p.halfExt()
 }
 
 // ── R21: copper-near-edge (§5.1 铜到板边间距) ───────────────────────────────
