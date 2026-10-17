@@ -180,3 +180,16 @@ test('stop preserves in-flight deadline sweeps while deactivate releases the clo
  await f.tick(); assert.equal(f.registrations.length, 1);
  await f.receive(0); assert.equal(f.transport.getConnectionStatus().connected, true);
 }));
+
+test('register frame carries the raw host user agent for daemon-side host classification', async () => {
+ const g = globalThis as Record<string, any>;
+ g.window = { navigator: { userAgent: 'Mozilla/5.0 edadesk/0.0.1 Electron/44.4.5' } };
+ try {
+  await fixture(async f => {
+   f.transport.start(); await f.tick(); await f.receive(0);
+   const register = f.frames.find(x => x.type === 'register');
+   assert.equal(register?.userAgent, 'Mozilla/5.0 edadesk/0.0.1 Electron/44.4.5');
+  });
+ }
+ finally { delete g.window; }
+});

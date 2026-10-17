@@ -383,3 +383,37 @@ func TestLiveWindowSummaryDescribesWhatIsConnected(t *testing.T) {
 		t.Fatalf("empty hub must summarise as (0,\"\"), got (%d,%q)", empty, s)
 	}
 }
+
+func TestWindowHostComesFromRegisteredUserAgent(t *testing.T) {
+	c := newConn(nil, time.Now().UTC())
+	c.applyRegister(protocol.Register{WindowID: "w", UserAgent: "Mozilla/5.0 edadesk/0.0.1 Chrome/152 Electron/44.4.5"}, time.Now().UTC())
+	if got := c.snapshot().Host; got.Kind != protocol.HostEdadesk || got.UserAgent == "" {
+		t.Fatalf("host = %+v, want edadesk with raw UA", got)
+	}
+	old := newConn(nil, time.Now().UTC())
+	old.applyRegister(protocol.Register{WindowID: "o"}, time.Now().UTC())
+	if got := old.snapshot().Host; got.Kind != protocol.HostUnknown {
+		t.Fatalf("connector without UA = %+v, want unknown", got)
+	}
+}
+
+func TestAmbiguousProjectDetailNamesEachWindowHost(t *testing.T) {
+	desk := connWith("desk", "ceshi", "pcb")
+	desk.userAgent = "Mozilla/5.0 edadesk/0.0.1 Electron/44.4.5"
+	tab := connWith("tab", "ceshi", "pcb")
+	tab.userAgent = "Mozilla/5.0 Chrome/141.0 Safari/537.36"
+	other := connWith("x", "other", "pcb")
+	h := &hub{windows: map[string]*conn{"desk": desk, "tab": tab, "x": other}}
+	if _, found, ambiguous := h.windowForProject("ceshi", "pcb"); found || !ambiguous {
+		t.Fatal("two ceshi windows must stay ambiguous")
+	}
+	detail := ambiguousProjectDetail(h.projectCandidates("ceshi"))
+	for _, want := range []string{"desk [host=edadesk doc=pcb]", "tab [host=browser doc=pcb]"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("detail %q missing %q", detail, want)
+		}
+	}
+	if strings.Contains(detail, "x [") {
+		t.Fatalf("detail lists a window of another project: %q", detail)
+	}
+}

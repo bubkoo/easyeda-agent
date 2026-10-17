@@ -18,13 +18,16 @@ import (
 // Window is a read-only snapshot of a connected EasyEDA window, used by /health
 // and listings.
 type Window struct {
-	WindowID         string           `json:"windowId"`
-	ConnectorVersion string           `json:"connectorVersion"`
-	EasyEDAVersion   string           `json:"easyedaVersion"`
-	Capabilities     []string         `json:"capabilities"`
-	Context          protocol.Context `json:"context"`
-	ConnectedAt      time.Time        `json:"connectedAt"`
-	LastSeen         time.Time        `json:"lastSeen"`
+	WindowID         string   `json:"windowId"`
+	ConnectorVersion string   `json:"connectorVersion"`
+	EasyEDAVersion   string   `json:"easyedaVersion"`
+	Capabilities     []string `json:"capabilities"`
+	// Host is classified from the user agent sent at registration, so two
+	// windows on one project (browser tab + desktop shell) can be told apart.
+	Host        protocol.ConnectorHost `json:"host"`
+	Context     protocol.Context       `json:"context"`
+	ConnectedAt time.Time              `json:"connectedAt"`
+	LastSeen    time.Time              `json:"lastSeen"`
 	// ConnectorVersionOK is set only by /health: true/false when both the
 	// connector and daemon report comparable semver (so a stale connector loaded
 	// in an open window is visible), nil when either version is non-semver (dev
@@ -44,6 +47,7 @@ type conn struct {
 	connVersion string
 	edaVersion  string
 	caps        []string
+	userAgent   string
 	ctx         protocol.Context
 	connectedAt time.Time
 	lastSeen    time.Time
@@ -73,6 +77,7 @@ func (c *conn) applyRegister(msg protocol.Register, now time.Time) {
 	c.connVersion = msg.ConnectorVersion
 	c.edaVersion = msg.EasyEDAVersion
 	c.caps = msg.Capabilities
+	c.userAgent = msg.UserAgent
 	c.lastSeen = now
 }
 
@@ -143,6 +148,7 @@ func (c *conn) snapshot() Window {
 		ConnectorVersion: c.connVersion,
 		EasyEDAVersion:   c.edaVersion,
 		Capabilities:     c.caps,
+		Host:             protocol.ClassifyHost(c.userAgent),
 		Context:          c.ctx,
 		ConnectedAt:      c.connectedAt,
 		LastSeen:         c.lastSeen,
@@ -385,7 +391,7 @@ func (h *hub) liveWindowSummary() (count int, summary string) {
 		if doc == "" {
 			doc = "?"
 		}
-		parts = append(parts, fmt.Sprintf("%s [project=%s doc=%s]", w.WindowID, project, doc))
+		parts = append(parts, fmt.Sprintf("%s [project=%s doc=%s host=%s]", w.WindowID, project, doc, w.Host.Kind))
 	}
 	sort.Strings(parts)
 	return len(parts), strings.Join(parts, ", ")
@@ -465,6 +471,18 @@ func (h *hub) windowForProject(project, preferDoc string) (id string, found bool
 	// Shared document identity does not prove shared transport ownership. Keep
 	// multiple live connections ambiguous, regardless of version or arrival.
 	return "", false, true
+}
+
+// projectCandidates lists the connected windows that match project, for
+// explaining an AMBIGUOUS_PROJECT refusal (which window is which host).
+func (h *hub) projectCandidates(project string) []Window {
+	var out []Window
+	for _, w := range h.list() {
+		if w.Context.ProjectName == project || w.Context.ProjectUUID == project {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // listAnnotated returns the window list with each window's ConnectorVersionOK

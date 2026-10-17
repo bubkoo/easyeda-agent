@@ -40,9 +40,14 @@ Sent by the daemon immediately on connect so the connector can confirm it reache
   "windowId": "uuid",
   "connectorVersion": "0.1.0",
   "easyedaVersion": "3.x",
-  "capabilities": ["schematic.v1"]
+  "capabilities": ["schematic.v1"],
+  "userAgent": "Mozilla/5.0 ... edadesk/0.0.1 Chrome/152 Electron/44.4.5 ..."
 }
 ```
+
+`userAgent` 可选，是宿主页面原始 `navigator.userAgent`；连接器不做判断，daemon 分类为
+`health.windows[].host.kind`（`edadesk` / `electron` / `browser` / `unknown`），见
+[连接器宿主](concepts.md#连接器宿主connector-host)。
 
 ### context (connector → daemon)
 

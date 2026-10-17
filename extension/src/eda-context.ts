@@ -58,6 +58,20 @@ export function pageVisibility(): string | undefined {
 	catch { return undefined; }
 }
 
+/**
+ * Host page user agent, read through the real global like pageVisibility().
+ * Reported raw at registration so the daemon can tell a desktop shell window
+ * from a browser tab; undefined when the sandbox hides it.
+ */
+export function hostUserAgent(): string | undefined {
+	try {
+		const scope = globalThis as unknown as { window?: { navigator?: { userAgent?: unknown } }; navigator?: { userAgent?: unknown } };
+		const ua = scope.window?.navigator?.userAgent ?? scope.navigator?.userAgent;
+		return typeof ua === 'string' && ua ? ua : undefined;
+	}
+	catch { return undefined; }
+}
+
 export async function readResponseContext(): Promise<ResponseContext> {
 	const context: ResponseContext = {};
 	const visibility = pageVisibility();

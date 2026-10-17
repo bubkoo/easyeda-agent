@@ -21,6 +21,14 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 入口和索引只路由到该位置。历史报告说明特定版本发生过什么，不覆盖当前规范，也不证明新版
 已验证。具体导航与归属表见 [文档索引](README.md)，设计理由见 [Agent 协作设计](agent-collaboration.md)。
 
+## 连接器宿主（connector host）
+
+**连接器宿主**指承载连接器窗口的页面环境：`edadesk`（桌面外壳，UA 含 `edadesk/`）、`electron`
+（其他 Electron 应用，如桌面版客户端）、`browser`（普通浏览器标签）或 `unknown`（旧连接器未上报）。
+连接器在 `register` 帧原样上报 `navigator.userAgent`，由 daemon 的 `protocol.ClassifyHost` 分类，
+`health.windows[].host` 输出 `{kind,userAgent}`。宿主只用于区分同一工程的多个窗口和解释路由歧义，
+不证明窗口可见、前台或目标文档正确；路由仍以 `windowId` 与实时上下文为准。
+
 ## 实际回读图与设计图册
 
 **实际回读图**由保存重载后采集的 PCB 对象直接生成，不应用布局候选变换；坐标、朝向和

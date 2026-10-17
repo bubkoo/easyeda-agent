@@ -61,6 +61,8 @@ export interface RegisterFrame {
 	connectorVersion: string;
 	easyedaVersion: string;
 	capabilities: Array<string>;
+	/** Raw navigator.userAgent of the host page; the daemon classifies it. */
+	userAgent?: string;
 }
 
 export interface ContextFrame {

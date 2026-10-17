@@ -173,7 +173,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		id, found, ambiguous := s.hub.windowForProject(req.Project, docTypeForAction(req.Action))
 		if ambiguous {
 			started := time.Now().UTC()
-			errResp := errorResponse(req.ID, "AMBIGUOUS_PROJECT", fmt.Sprintf("multiple connected windows match project %q", req.Project), "pass --window to pick one (see `easyeda health`)")
+			errResp := errorResponse(req.ID, "AMBIGUOUS_PROJECT", fmt.Sprintf("multiple connected windows match project %q", req.Project), ambiguousProjectDetail(s.hub.projectCandidates(req.Project)))
 			s.audit.Append(fromResponse(started, &req, &errResp))
 			writeJSON(w, http.StatusConflict, errResp)
 			return
@@ -557,4 +557,17 @@ func errorResponse(id, code, message, detail string) protocol.Response {
 			Detail:  detail,
 		},
 	}
+}
+
+// ambiguousProjectDetail names each candidate window with its host and active
+// document, so the caller can choose a --window without another round trip.
+func ambiguousProjectDetail(candidates []Window) string {
+	parts := make([]string, 0, len(candidates))
+	for _, w := range candidates {
+		parts = append(parts, fmt.Sprintf("%s [host=%s doc=%s]", w.WindowID, w.Host.Kind, w.Context.DocumentType))
+	}
+	if len(parts) == 0 {
+		return "pass --window to pick one (see `easyeda health`)"
+	}
+	return "pass --window to pick one: " + strings.Join(parts, ", ")
 }

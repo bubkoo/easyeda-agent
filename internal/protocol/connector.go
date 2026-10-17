@@ -1,5 +1,7 @@
 package protocol
 
+import "strings"
+
 // Message type discriminators carried on the connector WebSocket. Every frame
 // is a JSON object with a "type" field that selects one of the structs below.
 //
@@ -54,6 +56,39 @@ type Register struct {
 	ConnectorVersion string   `json:"connectorVersion"`
 	EasyEDAVersion   string   `json:"easyedaVersion"`
 	Capabilities     []string `json:"capabilities"`
+	// UserAgent is the host page's navigator.userAgent, raw. The daemon
+	// classifies it (ClassifyHost); the connector never guesses the host.
+	UserAgent string `json:"userAgent,omitempty"`
+}
+
+// Host kinds a connector window can run in.
+const (
+	HostEdadesk  = "edadesk"  // the edadesk desktop shell (UA token "edadesk/")
+	HostElectron = "electron" // another Electron app, e.g. a desktop EDA client
+	HostBrowser  = "browser"  // a regular browser tab
+	HostUnknown  = "unknown"  // no user agent reported (older connector)
+)
+
+// ConnectorHost names what kind of page hosts a connector window.
+type ConnectorHost struct {
+	Kind      string `json:"kind"`
+	UserAgent string `json:"userAgent,omitempty"`
+}
+
+// ClassifyHost maps a raw user agent to a host kind. Tokens are matched as
+// "name/" so a product name inside free text does not count.
+func ClassifyHost(userAgent string) ConnectorHost {
+	ua := strings.TrimSpace(userAgent)
+	switch {
+	case ua == "":
+		return ConnectorHost{Kind: HostUnknown}
+	case strings.Contains(ua, " edadesk/") || strings.HasPrefix(ua, "edadesk/"):
+		return ConnectorHost{Kind: HostEdadesk, UserAgent: ua}
+	case strings.Contains(ua, " Electron/"):
+		return ConnectorHost{Kind: HostElectron, UserAgent: ua}
+	default:
+		return ConnectorHost{Kind: HostBrowser, UserAgent: ua}
+	}
 }
 
 // ContextMessage reports the connector's current project/document context. It

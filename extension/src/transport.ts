@@ -32,7 +32,7 @@
 
 import { ActionQueue, isBypassAction, mustHoldAfterAbandon } from './action-queue';
 import { armDeadline, sweepDeadlines, type DeadlineHandle } from './deadlines';
-import { buildContextFrame, readEasyEdaVersion } from './eda-context';
+import { buildContextFrame, hostUserAgent, readEasyEdaVersion } from './eda-context';
 import { runAction } from './actions';
 import { createWebSocketId } from './transport-identity';
 import { startWatchdogClock, type WatchdogClock } from './watchdog-clock';
@@ -803,6 +803,8 @@ function sendRegister(): void {
 		easyedaVersion: readEasyEdaVersion(),
 		capabilities: CAPABILITIES,
 	};
+	const userAgent = hostUserAgent();
+	if (userAgent) frame.userAgent = userAgent;
 	sendFrame(frame);
 	diag(
 		`lifecycle registered moduleBootstrapObserved=${moduleBootstrapObserved} activateObserved=${activateObserved}`,

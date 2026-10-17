@@ -197,6 +197,9 @@ easyeda doc switch "<doc-name-or-uuid>" --project "<project>"
 - 多窗口时，`versionGate` / `hostCompatibility` 总结包含其他工程的连接器；按目标
   project/doc 唯一匹配的窗口核对其版本及 `windowId` 对应宿主 finding，不能把其他工程的
   旧连接器误判为目标版本变化。目标窗口缺失、重复或自身版本不符仍须查明；保留完整 health 回包。
+- 每个窗口带 `host.kind`：`edadesk`（桌面外壳）、`electron`（其他 Electron 客户端）、`browser`
+  或 `unknown`（旧连接器未上报）。同一工程有多个窗口时 `--project` 报 `AMBIGUOUS_PROJECT`，
+  错误详情列出各候选 `windowId` 的宿主与文档类型；按目标宿主选 `--window`，宿主不证明页面可见或文档正确。
 - 用户新打开同一工程时，后台旧窗口可能仍在连接；相同 project/doc 不证明连接属于当前可见页。
   若只读观察的页面 URL/标题与连接器顶层窗口不一致，先停止新增测试写入，明确两者身份，
   请用户在当前页启动连接器并允许外部交互，再按新注册和 fresh context 绑定窗口。
