@@ -320,8 +320,11 @@ func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, arcs
 	tracks = real
 
 	rep.Findings = append(rep.Findings, findDanglingEnds(tracks, vias, pads, arcs)...)
-	rep.Findings = append(rep.Findings, findAcuteAngles(tracks, pads)...)
-	rep.Findings = append(rep.Findings, findNonOrthogonal(tracks)...)
+	// Teardrop lines (pcb teardrop-plan) meet their track at a shallow angle by
+	// design; the corner and grid rules judge the routing without them.
+	routed := withoutTeardrops(tracks, pads)
+	rep.Findings = append(rep.Findings, findAcuteAngles(routed, pads)...)
+	rep.Findings = append(rep.Findings, findNonOrthogonal(routed)...)
 	rep.Findings = append(rep.Findings, findTrackOverPad(tracks, pads)...)
 	rep.Findings = append(rep.Findings, findViaIssues(tracks, vias)...)
 	rep.Findings = append(rep.Findings, findWidthMismatch(tracks, pads)...)
@@ -649,6 +652,87 @@ func acuteVertexInsideSameNetPad(x, y float64, net string, layer int, pads []pcb
 // arbitrary angle (e.g. a lazy pad-to-pad diagonal) is a free-angle route: harder
 // to inspect, and often a sign the router/hand-route skipped a proper corner. We
 // flag any single segment whose heading is >1° off the nearest multiple of 45°.
+// withoutTeardrops drops line-shaped teardrops (pcb teardrop-plan): a PAIR of
+// short tracks that start on the same same-net pad and end within 2 mil of each
+// other at shallow angles (a thin pad gives a pair only a few degrees apart). The host splits the reinforced track at the tips, so
+// "ends on another track's interior" does not survive a create; the pair does.
+func withoutTeardrops(tracks []pcbTrack, pads []pcbPadP) []pcbTrack {
+	type entry struct {
+		pad      int
+		fx, fy   float64 // far end
+		dx, dy   float64
+		eligible bool
+	}
+	es := make([]entry, len(tracks))
+	for i, t := range tracks {
+		es[i].pad = -1
+		if t.Net == "" {
+			continue
+		}
+		L := math.Hypot(t.X2-t.X1, t.Y2-t.Y1)
+		for j, p := range pads {
+			if L == 0 || L > 3*math.Max(p.W, p.H) {
+				continue
+			}
+			if pcbPadAnchorsPoint(p, t.X1, t.Y1, t.Layer, t.Net, 0) && !pcbPadAnchorsPoint(p, t.X2, t.Y2, t.Layer, t.Net, 0) {
+				es[i] = entry{pad: j, fx: t.X2, fy: t.Y2, dx: t.X2 - t.X1, dy: t.Y2 - t.Y1, eligible: true}
+				break
+			}
+			if pcbPadAnchorsPoint(p, t.X2, t.Y2, t.Layer, t.Net, 0) && !pcbPadAnchorsPoint(p, t.X1, t.Y1, t.Layer, t.Net, 0) {
+				es[i] = entry{pad: j, fx: t.X1, fy: t.Y1, dx: t.X1 - t.X2, dy: t.Y1 - t.Y2, eligible: true}
+				break
+			}
+		}
+	}
+	// A piece whose far end runs straight on into another same-net track is the
+	// reinforced track itself (split by the host at a tip), not a teardrop.
+	for i, e := range es {
+		if !e.eligible {
+			continue
+		}
+		for k, o := range tracks {
+			if k == i || o.Net != tracks[i].Net || o.Layer != tracks[i].Layer {
+				continue
+			}
+			var odx, ody float64
+			switch {
+			case math.Hypot(o.X1-e.fx, o.Y1-e.fy) <= pcbCoincEps:
+				odx, ody = o.X2-o.X1, o.Y2-o.Y1
+			case math.Hypot(o.X2-e.fx, o.Y2-e.fy) <= pcbCoincEps:
+				odx, ody = o.X1-o.X2, o.Y1-o.Y2
+			default:
+				continue
+			}
+			if angleBetween(e.dx, e.dy, odx, ody) < 1 { // e points into the joint, o away: straight on = 0°
+				es[i].eligible = false
+				break
+			}
+		}
+	}
+	drop := make([]bool, len(tracks))
+	for i := range tracks {
+		for j := i + 1; j < len(tracks); j++ {
+			a, b := es[i], es[j]
+			if !a.eligible || !b.eligible || a.pad != b.pad || tracks[i].Net != tracks[j].Net || tracks[i].Layer != tracks[j].Layer {
+				continue
+			}
+			if math.Hypot(a.fx-b.fx, a.fy-b.fy) > 2 {
+				continue
+			}
+			if ang := angleBetween(a.dx, a.dy, b.dx, b.dy); ang > 1 && ang < 90 {
+				drop[i], drop[j] = true, true
+			}
+		}
+	}
+	out := make([]pcbTrack, 0, len(tracks))
+	for i, t := range tracks {
+		if !drop[i] {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func findNonOrthogonal(tracks []pcbTrack) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	for _, t := range tracks {

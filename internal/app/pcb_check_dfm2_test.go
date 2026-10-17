@@ -246,3 +246,35 @@ func TestViaInPadUsesPadRectangle(t *testing.T) {
 		t.Fatalf("via on the pad not flagged: %+v", got)
 	}
 }
+
+func TestTeardropLinesExemptFromCornerAndGridRules(t *testing.T) {
+	pad := pcbPadP{Designator: "C1", Number: "1", Net: "N", Layer: 1, X: 0, Y: 0, W: 19.7, H: 21.3}
+	tearA := pcbTrack{ID: "a", Net: "N", Layer: 1, X1: 5.85, Y1: 6.15, X2: 33.85, Y2: 0, Width: 8}
+	tearB := pcbTrack{ID: "b", Net: "N", Layer: 1, X1: 5.85, Y1: -6.15, X2: 32.85, Y2: 0, Width: 8}
+	stray := pcbTrack{ID: "s", Net: "N", Layer: 1, X1: 100, Y1: 0, X2: 130, Y2: 17, Width: 8} // real free-angle routing
+	// the host splits the reinforced track at the tips (live): pieces end there
+	pieceA := pcbTrack{ID: "p1", Net: "N", Layer: 1, X1: 0, Y1: 0, X2: 32.85, Y2: 0, Width: 8}
+	pieceB := pcbTrack{ID: "p2", Net: "N", Layer: 1, X1: 32.85, Y1: 0, X2: 33.85, Y2: 0, Width: 8}
+	pieceC := pcbTrack{ID: "p3", Net: "N", Layer: 1, X1: 33.85, Y1: 0, X2: 100, Y2: 0, Width: 8}
+	got := withoutTeardrops([]pcbTrack{pieceA, pieceB, pieceC, tearA, tearB, stray}, []pcbPadP{pad})
+	if len(got) != 4 || got[3].ID != "s" {
+		t.Fatalf("kept %+v", got)
+	}
+	if f := findNonOrthogonal(got); len(f) != 1 || f[0].Primitives[0] != "s" {
+		t.Fatalf("non-orthogonal findings %+v", f)
+	}
+	if f := findAcuteAngles(got, []pcbPadP{pad}); len(f) != 0 {
+		t.Fatalf("acute findings at teardrop tips %+v", f)
+	}
+}
+
+func TestThinTeardropPairStillExempt(t *testing.T) {
+	pad := pcbPadP{Designator: "U2", Number: "8", Net: "V", Layer: 1, X: 291, Y: -135, W: 88.6, H: 24.8}
+	in := pcbTrack{ID: "in", Net: "V", Layer: 1, X1: 291, Y1: -135, X2: 200, Y2: -135, Width: 17.7}
+	a := pcbTrack{ID: "a", Net: "V", Layer: 1, X1: 251.5, Y1: -132.5, X2: 205, Y2: -135, Width: 17.7}
+	b := pcbTrack{ID: "b", Net: "V", Layer: 1, X1: 251.5, Y1: -137.5, X2: 206, Y2: -135, Width: 17.7}
+	got := withoutTeardrops([]pcbTrack{in, a, b}, []pcbPadP{pad})
+	if len(got) != 1 || got[0].ID != "in" {
+		t.Fatalf("kept %+v", got)
+	}
+}
