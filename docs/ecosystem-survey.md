@@ -299,6 +299,19 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 
 ---
 
+## 7.9 官方自动布线已可调用（2026-10-17，Web 4.1.78 真机）
+
+> ⚠️ 本节推翻 §7 / §8.1 及表中「autoRouting @alpha / undefined」的判断（那些是 3.2.x 时的事实）。
+
+- `pro-api-types` 0.4.25 把 `pcb_Document.autoRouting(props?)` 标为 **@beta**；Web 4.1.78 上
+  `typeof eda.pcb_Document.autoRouting === 'function'`（`clearRouting`、`autoLayout` 同样可用）。
+- 入参与原生「自动布线」对话框一一对应：`RoutingNets`、`ignoreNets`、`layers`、`cornerStyle`
+  （0=45°，1=90°）、`existingPrimitiveMode`（`'keep'`/`'remove'`）、`optimization`（1=布通率，0=速度）；
+  返回 `{success, totalNetsCount, successNetsCount, failedNets, duration}`，无弹窗。
+- 封装为 typed action `pcb.route.auto` + `easyeda pcb autoroute`（默认官方引擎，强制 keep）。
+  ESP32-S3R8 两层板现场：12 网 23 s 布通 11 网，19 段锁定铜无损；`success:true` 时也可能 0/1 布通。
+- A4 / R5 由此解除；Freerouting 文件式往返降为离线兜底。
+
 ## 8. PCB 自动布线 + keep-out 深挖（2026-06-29，真机 + 官方文档扫描）
 
 接 §7。这次把「能不能产出能用的板」挖到底，结论硬：

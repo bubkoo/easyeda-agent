@@ -4916,3 +4916,66 @@ test('pcb.route.delete deletes a top-level track whose id merely starts with a c
 	}
 	finally { delete (globalThis as any).eda; }
 });
+
+// ─── pcb.route.auto (official autoRouting, mock eda) ─────────────────────
+import { parsePcbAutoRouteProps, pcbRouteAuto } from './actions';
+
+test('parsePcbAutoRouteProps: defaults keep existing copper, 45°, completion', () => {
+	assert.deepEqual(parsePcbAutoRouteProps({}), { cornerStyle: 0, existingPrimitiveMode: 'keep', optimization: 1 });
+	assert.deepEqual(parsePcbAutoRouteProps({ nets: ['SPID'], ignoreNets: ['GND'], layers: [1, 2], cornerStyle: '90', optimization: 'faster' }),
+		{ RoutingNets: ['SPID'], ignoreNets: ['GND'], layers: [1, 2], cornerStyle: 1, existingPrimitiveMode: 'keep', optimization: 0 });
+	assert.throws(() => parsePcbAutoRouteProps({ layers: [3] }), /copper layer/);
+	assert.throws(() => parsePcbAutoRouteProps({ cornerStyle: '30' }), /cornerStyle/);
+	assert.throws(() => parsePcbAutoRouteProps({ existing: 'remove', ignoreNets: 'GND' }), /string array/);
+});
+
+function installAutoRouteStub(route: (props: any, live: Record<string, any[]>) => any) {
+	const live: Record<string, any[]> = { lines: [pcbPrim('xtal', 1, true), pcbPrim('outline', 11)], arcs: [], vias: [pcbPrim('epad-via')] };
+	const seen: any[] = [];
+	(globalThis as any).eda = {
+		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
+		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
+		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Document: { autoRouting: async (props: any) => { seen.push(props); return route(props, live); } },
+	};
+	return seen;
+}
+
+test('pcbRouteAuto: reports created copper and that locked copper survived', async () => {
+	const seen = installAutoRouteStub((_p, live) => {
+		live.lines.push(pcbPrim('t1', 1), pcbPrim('t2', 2));
+		live.vias.push(pcbPrim('v1'));
+		return { success: true, totalNetsCount: 3, successNetsCount: 3, failedNets: [], duration: 10 };
+	});
+	const res: any = await pcbRouteAuto({ ignoreNets: ['GND'], layers: [1, 2] });
+	assert.equal(seen[0].existingPrimitiveMode, 'keep');
+	assert.deepEqual(res.result.created, { tracks: 2, arcs: 0, vias: 1 });
+	assert.deepEqual(res.result.lockedLost, []);
+	assert.equal(res.result.lockedBefore, 1);
+	assert.equal(res.result.before.tracks, 1, 'the layer-11 outline line is not routing copper');
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAuto: a router that changed nothing and reports failure is an error', async () => {
+	installAutoRouteStub(() => ({ success: false, totalNetsCount: 3, successNetsCount: 0, failedNets: ['A'], duration: 1 }));
+	await assert.rejects(() => pcbRouteAuto({}), /changed nothing/);
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAuto: success:true with a failed net and no new copper is an error (live 0/1 routed)', async () => {
+	installAutoRouteStub(() => ({ success: true, totalNetsCount: 1, successNetsCount: 0, failedNets: ['SPIQ'], duration: 1 }));
+	await assert.rejects(() => pcbRouteAuto({ nets: ['SPIQ'] }), /changed nothing/);
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAuto: locked copper the router removed is reported, not hidden', async () => {
+	installAutoRouteStub((_p, live) => {
+		live.lines = live.lines.filter(l => l.getState_PrimitiveId() !== 'xtal');
+		live.lines.push(pcbPrim('t1', 1));
+		return { success: true, totalNetsCount: 1, successNetsCount: 1, failedNets: [], duration: 1 };
+	});
+	const res: any = await pcbRouteAuto({});
+	assert.deepEqual(res.result.lockedLost, ['xtal']);
+	assert.deepEqual(res.result.removedPrimitiveIds, ['xtal']);
+	delete (globalThis as any).eda;
+});

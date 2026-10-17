@@ -101,11 +101,18 @@ Real routing primitives — **additive creates**, like the schematic
 `pcb.layers.list`. EasyEDA's `create()` is **lenient** — it can return no primitive on a
 bad layer/coords without throwing, so each action verifies a primitive came back and
 fails honestly otherwise. **PCB autosave is on** (debounced) — still **save explicitly**
-at checkpoints. There is **no one-call autorouter** on this build
-(`pcb_Document.autoRouting` is undefined — see `docs/ecosystem-survey.md` §6/§7); route
-segment-by-segment, or use the file-exchange autoroute flow. 布线方式见
-[`design-flow.md`](./design-flow.md) P7：稀疏短线可逐段或 `route-short`，稠密板使用题目允许的
-EasyEDA 原生自动布线或已配置的外部路由器，完成后都按网回读并运行 DRC。
+at checkpoints. 布线方式见 [`design-flow.md`](./design-flow.md) P7：关键网（RF、晶振、差分）
+按参数数据逐段写入并 `pcb track-lock`，其余信号用官方路由器 `easyeda pcb autoroute`
+（`pcb.route.auto` → `eda.pcb_Document.autoRouting`，@beta，Web 4.1.78 实测可用，无弹窗）。
+它与原生「布线 → 自动布线」对话框同一引擎：已有铜一律保留，`--ignore-net` 排除待铺铜的 GND
+和已布关键网，`--layers 1,2` 限定层；返回逐网结果、新建铜计数与锁定铜是否丢失。完成后
+save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
+- 路由器报 `success:true` 只表示已启动；以 `successNetsCount`/`failedNets` 与新建铜为准。
+- 失败网先换顺序：rip-up 挡路的同类网（save→reload 证实 0 轨）→ 先布失败网 → 再布其余；
+  仍不通再手布（换层绕行）。路由器会把孔贴近已锁定的宽 RF 线（实测 2.8 mil），每轮跑
+  `pcb check` 找间距。
+- 路由器给 3V3 用 7.06 mil 细线（低于 9.84 mil 电源支线档），`width-under-spec` 会报。
+外部引擎（`--router` / `FREEROUTING_CMD`）只作离线兜底，`getDsnFile` 丢禁布区。
 
 - `pcb.line.create` — a copper **track** (导线): line segment on a copper layer
   (`TOP=1`, `BOTTOM=2`; **inner-copper ids are higher** — `id 3` is silkscreen, not
@@ -518,8 +525,8 @@ subset; `--dry-run` prints the per-corner plan. Save after placing; delete via
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,
 > length-tuning/serpentine, fanout, remove-loops) has **NO `eda.*` API** — the agent
 > cannot do smart/avoiding/push-and-shove routing. Programmatic routing is limited to:
-> create tracks/vias/pours by coordinate (above), rip-up, the `@alpha` `autoRouting`
-> (undefined on 3.2.148), or read-primitives → external engine → write (the official
+> create tracks/vias/pours by coordinate (above), rip-up, the official `autoRouting`
+> (`pcb autoroute`, @beta and live since Web 4.1.78), or read-primitives → external engine → write (the official
 > kirouting pattern). So route segment-by-segment, pour planes, and leave smart routing
 > to the human/UI. **Shipped: copper pour + rip-up (R1/R2).** **net-class WIDTHS
 > are shipped daemon-side** (R3-width): `pcb net-classes` prints the role→spec-width

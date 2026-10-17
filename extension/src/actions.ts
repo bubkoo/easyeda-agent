@@ -14677,6 +14677,95 @@ const pcbClearRouting: Handler = async (payload) => {
 	return { result: { cleared, type } };
 };
 
+// ─── PCB auto-routing: the official router (eda.pcb_Document.autoRouting) ──
+// @beta since pro-api-types 0.4.25 and a function on Web 4.1.78 (it was @alpha
+// and undefined on 3.2.x). Its props mirror the native 自动布线 dialog. Existing
+// copper is always KEPT: hand-routed critical nets are locked, and 'remove'
+// would let the router delete them. The result carries the router's own report
+// plus a before/after copper inventory, so the CLI can prove what changed and
+// that every locked primitive survived.
+
+/** Parse the auto-route payload into router props. Pure, so it is unit-tested. */
+export function parsePcbAutoRouteProps(payload: Record<string, unknown>): Record<string, unknown> {
+	const nets = optionalStringArray(payload, 'nets');
+	const ignoreNets = optionalStringArray(payload, 'ignoreNets');
+	const layers = payload.layers;
+	if (layers !== undefined && (!Array.isArray(layers) || !layers.length || !layers.every(l => Number.isInteger(l) && onPcbCopperLayer(l as number)))) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '"layers" must be a non-empty array of copper layer ids (TOP=1, BOTTOM=2, inner 15-44).');
+	}
+	const corner = optionalString(payload, 'cornerStyle') ?? '45';
+	if (corner !== '45' && corner !== '90') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '"cornerStyle" must be "45" or "90".');
+	const optimization = optionalString(payload, 'optimization') ?? 'completion';
+	if (optimization !== 'completion' && optimization !== 'faster') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '"optimization" must be "completion" or "faster".');
+	return {
+		...(nets?.length ? { RoutingNets: nets } : {}),
+		...(ignoreNets?.length ? { ignoreNets } : {}),
+		...(layers !== undefined ? { layers } : {}),
+		cornerStyle: corner === '45' ? 0 : 1, // EPCB_AutoRoutingCornerStyle.DEGREE_45 / DEGREE_90
+		existingPrimitiveMode: 'keep', // EPCB_AutoRoutingExistingPrimitiveMode.KEEP — never 'remove'
+		optimization: optimization === 'completion' ? 1 : 0, // EPCB_AutoRoutingOptimization
+	};
+}
+
+type PcbCopperInventory = { lines: Set<string>; arcs: Set<string>; vias: Set<string>; locked: Set<string> };
+
+async function pcbCopperInventory(): Promise<PcbCopperInventory> {
+	const inv: PcbCopperInventory = { lines: new Set(), arcs: new Set(), vias: new Set(), locked: new Set() };
+	const take = (items: Array<SchPrimitiveLike> | undefined, into: Set<string>, layerFilter: boolean) => {
+		for (const p of items ?? []) {
+			if (layerFilter && !onPcbCopperLayer(pcbPrimLayer(p))) continue;
+			const id = p.getState_PrimitiveId();
+			into.add(id);
+			if (pcbPrimLocked(p)) inv.locked.add(id);
+		}
+	};
+	take(await eda.pcb_PrimitiveLine.getAll(), inv.lines, true);
+	take(await eda.pcb_PrimitiveArc.getAll(), inv.arcs, true);
+	take(await eda.pcb_PrimitiveVia.getAll(), inv.vias, false);
+	return inv;
+}
+
+export const pcbRouteAuto: Handler = async (payload) => {
+	const props = parsePcbAutoRouteProps(payload);
+	const route = (eda.pcb_Document as unknown as { autoRouting?: (p: unknown) => Promise<unknown> }).autoRouting;
+	if (typeof route !== 'function') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unsupported: eda.pcb_Document.autoRouting is not available on this EasyEDA build.');
+	}
+	let before: PcbCopperInventory;
+	try { before = await pcbCopperInventory(); }
+	catch (err) { throw edaError(err, 'Copper inventory before auto-routing is unavailable; nothing was routed.'); }
+	let report: unknown;
+	try { report = await route.call(eda.pcb_Document, props); }
+	catch (err) { throw edaError(err, 'eda.pcb_Document.autoRouting failed.'); }
+	const after = await pcbCopperInventory();
+	const added = (a: Set<string>, b: Set<string>) => [...b].filter(id => !a.has(id)).length;
+	const removed = (a: Set<string>, b: Set<string>) => [...a].filter(id => !b.has(id));
+	const lockedLost = [...before.locked].filter(id => !after.locked.has(id));
+	const removedIds = [...removed(before.lines, after.lines), ...removed(before.arcs, after.arcs), ...removed(before.vias, after.vias)];
+	const created = { tracks: added(before.lines, after.lines), arcs: added(before.arcs, after.arcs), vias: added(before.vias, after.vias) };
+	const changed = created.tracks + created.arcs + created.vias + removedIds.length > 0;
+	const ok = (report as { success?: unknown } | undefined)?.success;
+	const failedNets = (report as { failedNets?: unknown } | undefined)?.failedNets;
+	// Partial-application convention (#151): once the canvas changed, report it.
+	// `success` only means the router started (live: success:true, 0/1 routed,
+	// nothing drawn) — no change plus a failed net is a failure.
+	if (!changed && (ok !== true || (Array.isArray(failedNets) && failedNets.length > 0))) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `autoRouting changed nothing (router report: ${JSON.stringify(report)}).`);
+	}
+	return {
+		result: {
+			router: report ?? null,
+			props,
+			created,
+			removedPrimitiveIds: removedIds,
+			lockedBefore: before.locked.size,
+			lockedLost,
+			before: { tracks: before.lines.size, arcs: before.arcs.size, vias: before.vias.size },
+			after: { tracks: after.lines.size, arcs: after.arcs.size, vias: after.vias.size },
+		},
+	};
+};
+
 // ─── PCB routing: surgical delete by primitiveId ─────────────────────
 // rip_up is net-scoped (all-or-nothing per net); this deletes EXACTLY the
 // tracks/arcs/vias named by id — the fix for "one bad via forces re-routing the
@@ -15823,6 +15912,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.route.delete': pcbRouteDelete,
 	'pcb.route.via_hop': pcbRouteViaHop,
 	'pcb.clear_routing': pcbClearRouting,
+	'pcb.route.auto': pcbRouteAuto,
 	'pcb.pour.create': pcbPourCreate,
 	'pcb.pour.list': pcbPourList,
 	'pcb.poured.list': pcbPouredList,

@@ -2959,41 +2959,42 @@ external router (Freerouting) would route under the antenna. The result reports
 	pcb.AddCommand(newPcbModuleOwnedCmd(stdout, stderr))
 	// ── refine: 打分驱动的精修环（默认 dry-run，按步回滚）──────────────────────
 	pcb.AddCommand(newPcbRefineCmd(cfg, &window, stdout, stderr))
-	// ── autoroute: one-command Freerouting round-trip ────────────────────────
-	// export DSN → run an external Freerouting engine → import the routed SES → DRC.
-	// The engine is external (Freerouting needs Java 17+); decoupled via a command
-	// template so any router works. Without one configured it exports + stops
-	// (graceful degradation → route manually, then `pcb import-autoroute`).
+	// ── autoroute: the official router by default; an external engine on request ─
+	// Default: eda.pcb_Document.autoRouting (pcb.route.auto), existing copper kept.
+	// With --router / FREEROUTING_CMD: export DSN → external engine → import SES → DRC.
 	{
 		var routerCmd string
 		var keep bool
+		var nets, ignoreNets []string
+		var layers []int
+		var corner, optimize string
+		var routeTimeout time.Duration
 		var forceReason, forceUnsafeReason string
 		c := &cobra.Command{
 			Use:   "autoroute",
-			Short: "Auto-route the active PCB via an external Freerouting engine (DSN→route→SES→import→DRC)",
-			Long: `Orchestrate a DSN→route→SES→import→DRC round-trip. The routing ENGINE is
-external and pluggable (--router / FREEROUTING_CMD with {in}/{out}); we do NOT
-bundle one.
+			Short: "Auto-route the active PCB with the official EasyEDA router (or an external engine via --router)",
+			Long: `Default: run the official router eda.pcb_Document.autoRouting (@beta since
+pro-api-types 0.4.25, live on Web 4.1.78) — the same engine as the native
+布线 → 自动布线 dialog, with no popup. Existing tracks/vias are always KEPT, so
+critical nets routed by hand and locked ('pcb track-lock') survive; the command
+fails if any locked primitive disappears. Exclude nets you will pour (GND) or have
+already routed with --ignore-net. The result lists the router's per-net report
+and the created copper. Afterwards: pcb save → doc reload → pcb drc / pcb check.
 
-NOTE — there is no built-in, no-popup, programmatically-callable autorouter today:
-  • eda.pcb_Document.autoRouting() is declared but @alpha / undefined at runtime.
-  • easyeda-pcb-router (official headless Freerouting) is a separate WS service you
-    must run yourself.
-  • the marketplace Freerouting extension can't be invoked from another extension.
-So this command needs an external engine YOU provide, and is SUPERSEDED once a
-native autoRouting() API ships. The building blocks (pcb export-dsn /
-import-autoroute / snapshot) work regardless.
+  easyeda pcb autoroute --layers 1,2 --ignore-net GND --ignore-net XTAL_P
 
-  easyeda pcb autoroute --router '<your-dsn→ses-router-cmd> {in} {out}'
-
-Without a router configured, autoroute exports the DSN and stops — route it
-externally, then run 'easyeda pcb import-autoroute <file.ses>'.
-
-PREREQUISITE: keep-out zones (antenna / board
-edge) MUST be in the DSN, else the router will route under the antenna. Verify the
-exported DSN contains keepout entries before trusting the result.`,
+External engine (fallback): --router '<dsn→ses command> {in} {out}' (or
+FREEROUTING_CMD) exports a Specctra DSN, runs it, imports the SES and runs DRC.
+getDsnFile drops keep-out regions, so verify the DSN before trusting that path.`,
 			Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				tmpl := routerCmd
+				if tmpl == "" {
+					tmpl = os.Getenv("FREEROUTING_CMD")
+				}
+				if tmpl == "" {
+					return runOfficialAutoroute(cfg, window, nets, ignoreNets, layers, corner, optimize, routeTimeout, stdout, stderr)
+				}
 				// Workflow stage state is historical diagnostic data only. Autoroute
 				// proceeds from the live board and its factual preflights below.
 				// 1. Export DSN, capture the persisted file path.
@@ -3012,16 +3013,6 @@ exported DSN contains keepout entries before trusting the result.`,
 					return fmt.Errorf("export-dsn returned no file (PCB empty or no nets? run `pcb import-changes` first)")
 				}
 				fmt.Fprintf(stderr, "DSN exported: %s\n", dsnPath)
-
-				tmpl := routerCmd
-				if tmpl == "" {
-					tmpl = os.Getenv("FREEROUTING_CMD")
-				}
-				if tmpl == "" {
-					fmt.Fprintf(stderr, "no --router / FREEROUTING_CMD set — DSN exported, stopping.\n"+
-						"  route it externally (Freerouting), then: easyeda pcb import-autoroute <file.ses>\n")
-					return nil
-				}
 
 				// 2. Run the external router: {in}=DSN, {out}=SES.
 				sesPath := strings.TrimSuffix(dsnPath, ".dsn") + ".ses"
@@ -3066,7 +3057,13 @@ exported DSN contains keepout entries before trusting the result.`,
 			},
 		}
 		c.Flags().StringVar(&routerCmd, "router", "", "external router command with {in}/{out} (or FREEROUTING_CMD env)")
-		c.Flags().BoolVar(&keep, "keep", false, "keep the intermediate SES file")
+		c.Flags().BoolVar(&keep, "keep", false, "external router: keep the intermediate SES file")
+		c.Flags().StringSliceVar(&nets, "net", nil, "official router: route only these nets (repeat or comma-separate; omit = all unrouted)")
+		c.Flags().StringSliceVar(&ignoreNets, "ignore-net", nil, "official router: nets to leave alone, e.g. GND (poured later) and hand-routed critical nets")
+		c.Flags().IntSliceVar(&layers, "layers", nil, "official router: copper layer ids it may use, e.g. 1,2 (omit = all signal layers)")
+		c.Flags().StringVar(&corner, "corner", "45", "official router: corner style 45|90")
+		c.Flags().StringVar(&optimize, "optimize", "completion", "official router: completion (布通率) | faster (速度)")
+		c.Flags().DurationVar(&routeTimeout, "timeout", 10*time.Minute, "official router: request budget for the routing call")
 		c.Flags().StringVar(&forceReason, "force", "", "deprecated compatibility option; workflow stages no longer gate routing")
 		c.Flags().StringVar(&forceUnsafeReason, "force-unsafe", "", "deprecated compatibility option; workflow stages no longer gate routing")
 		pcb.AddCommand(c)

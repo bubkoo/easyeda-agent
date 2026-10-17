@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `pcb autoroute` 默认改用官方路由器：新 typed action `pcb.route.auto` 调 `eda.pcb_Document.autoRouting`（@beta，Web 4.1.78 现场可用，与原生「自动布线」对话框同一引擎、无弹窗）。已有导线/过孔一律保留，支持 `--net`、`--ignore-net`、`--layers`、`--corner`、`--optimize`、`--timeout`；返回路由器逐网结果、新建铜计数、被删图元与丢失的锁定铜，锁定铜丢失时命令失败；画布未变且有失败网时报错（路由器 `success:true` 只表示已启动）。外部引擎改为 `--router` / `FREEROUTING_CMD` 显式启用。
+- `pcb pour-fit --replace` 只清同网**同层**的铺铜：此前按网清，先铺 TOP 再铺 BOTTOM 会把 TOP 的 GND 铺铜删掉。
 - `pcb clear`：封装内嵌过孔（QFN 散热焊盘的 `<器件id>e<n>`）不再进入过孔删除批次——它们随所属器件一起删除或保留，过孔接口删不掉它们，此前整批报错使干净的板也报 `failed:["vias"]`；返回 `skippedEmbeddedVias` 计数。用 `--project` 调用时，verify 流程的重载钉住实际应答的窗口，不再因窗口参数为空而判为窗口不一致、跳过二遍清板和最终计数。
 
 ## [1.14.0] - 2026-10-17
