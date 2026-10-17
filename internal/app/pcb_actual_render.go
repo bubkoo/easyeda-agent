@@ -495,7 +495,13 @@ func (d *pcbActualDrawing) renderActualText(w io.Writer, t pcbActualText) {
 		d.note("存在 reverse 文字；其原生字形语义未核验，仅显示锚点和读取包络。")
 		fmt.Fprint(w, `<path class="unknown" d="M-4,-4 L4,4 M-4,4 L4,-4"/>`)
 	} else {
-		fmt.Fprintf(w, `<text class="silk" x="0" y="0" dominant-baseline="text-after-edge" font-size="%.6f" font-family="%s" xml:space="preserve">%s</text>`, t.FontSize, html.EscapeString(family), html.EscapeString(t.Text))
+		// A component attribute anchors bottom-left (text above the anchor); a free
+		// string anchors top-left (text hangs below it) — measured on Web 4.1.78.
+		baseline := "text-after-edge"
+		if t.Kind == "string" {
+			baseline = "text-before-edge"
+		}
+		fmt.Fprintf(w, `<text class="silk" x="0" y="0" dominant-baseline="%s" font-size="%.6f" font-family="%s" xml:space="preserve">%s</text>`, baseline, t.FontSize, html.EscapeString(family), html.EscapeString(t.Text))
 	}
 	fmt.Fprint(w, `</g>`)
 }

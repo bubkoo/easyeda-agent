@@ -28,6 +28,7 @@ func actualRenderFixture(t *testing.T) []byte {
 		Silk: []pcbSilkText{
 			{ID: "top-text", Kind: "attribute", Key: "Designator", Text: "U1<&", Layer: 3, X: 162, Y: 345, Rotation: 37, FontSize: 22, BBox: &pcbRect{MinX: 155, MinY: 344, MaxX: 190, MaxY: 380}},
 			{ID: "bottom-text", Kind: "attribute", Key: "Designator", Text: "J1", Layer: 4, X: 480, Y: 710, Rotation: 90, Mirror: true, FontSize: 25, BBox: &pcbRect{MinX: 455, MinY: 708, MaxX: 481, MaxY: 740}},
+			{ID: "free-text", Kind: "string", Text: "TX", Layer: 3, X: 300, Y: 800, FontSize: 45, BBox: &pcbRect{MinX: 300, MinY: 750, MaxX: 358, MaxY: 800}},
 		}}
 	raw, err := json.Marshal(s)
 	if err != nil {
@@ -456,5 +457,24 @@ func TestPCBActualRenderBoundsRepeatedVisibilityWarnings(t *testing.T) {
 	}
 	if strings.Count(out.String(), `class="limitation"`) > 20 {
 		t.Fatal("repeated unknown visibility inflated page")
+	}
+}
+
+func TestPCBActualRenderFreeStringHangsBelowAnchor(t *testing.T) {
+	var svg bytes.Buffer
+	if err := renderPCBActualSVG(&svg, actualRenderFixture(t), "top"); err != nil {
+		t.Fatal(err)
+	}
+	out := svg.String()
+	i := strings.Index(out, `data-primitive-id="free-text"`)
+	if i < 0 {
+		t.Fatal("free string not rendered")
+	}
+	if seg := out[i:]; !strings.Contains(seg[:strings.Index(seg, "</g>")], `dominant-baseline="text-before-edge"`) {
+		t.Fatalf("free string drawn above its top-left anchor: %s", seg[:200])
+	}
+	j := strings.Index(out, `data-primitive-id="top-text"`)
+	if seg := out[j:]; !strings.Contains(seg[:strings.Index(seg, "</g>")], `dominant-baseline="text-after-edge"`) {
+		t.Fatal("designator baseline changed")
 	}
 }
