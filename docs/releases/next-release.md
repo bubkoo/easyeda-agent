@@ -16,6 +16,11 @@
 用户选择沿用有限范围（schema 3，`acceptanceScope=cli-fixes`），只验本次改动；完整设计 E2E（#43，PCB 阶段未开始）
 保持 in-progress，留待 follow-up。用例与结果见 `docs/releases/evidence/v1.14.0/`。
 
+v1.14.0 于 2026-10-17 07:22:58 UTC 正式发布，非草稿、非预发布，附注标签绑定提交 `7cde1ae`，main 已快进到该提交。
+十一项资产（含 checksums.txt）全部下载核对 SHA256 一致；升级冒烟：已发布的 v1.13.1 二进制在临时目录经
+`easyeda update --cli-only --version 1.14.0` 下载、校验并原子替换为 v1.14.0。ClawHub 同步成功（easyeda-agent@1.14.0），
+SkillHub 自动发布工作流成功。连接器 1.14.0 需用户更新后才能用到本版连接器行为。
+
 ## v1.13.1 历史记录
 
 用户于 2026-10-16 批准发布小版本 v1.13.1。连接器运行时自 v1.13.0 起无改动（`extension/src` 无差异），按版本规则递增 patch；
