@@ -5,7 +5,7 @@
   "author": "@zhoushoujianwork",
   "contributors": [],
   "added": "v0.12.1",
-  "updated": "v0.12.1",
+  "updated": "v1.14.1",
   "source": "datasheet:2450AT18A100E (Johanson Technology,参考应用电路:馈点前置匹配网络 + 板角/板边净空布局建议) + official-ref:Espressif《ESP32-S3 Hardware Design Guidelines》RF 段(LNA_IN 与天线间预留 π 型 CLC 匹配,馈线 50Ω)。天线符号脚名 2026-07-15 在 ceshi 临时页 place C89334 后 sch read 核实:ANT(1)=馈点,2=固定焊盘",
   "validated": null,
   "parts": {
@@ -56,6 +56,14 @@
     "本块只管匹配+天线;RF 源侧(LNA_IN 出脚即 50Ω)约束在 block.esp32s3r8_chip_minsys。RF_IN↔LNA_IN 之间不允许再串任何非 50Ω 结构(测试座除外,预留 IPEX 时另开块)。",
     "netflag 必须经真实导线连接(坐标重叠不算连通)——本项目通用约束。"
   ],
+  "signal_marker": "net_label",
+  "schematic_layout": {
+    "note": "关系形态(#43):串联 L 为锚件横放，信号流 RF_IN → L_M → ANT 从左到右；两颗并联 C 竖放分别贴 L_M 两端(芯片侧/天线侧),GND 经接地符号。无源件框内直连，只有 RF_IN 挂网络标签。坐标由求解器按实测引脚算，不在此手写偏移。",
+    "anchor": "L_M",
+    "flow": ["L_M", "ANT"],
+    "attach": { "C_M1": "L_M.1", "C_M2": "L_M.2" },
+    "orient": { "C_M1": "vertical", "C_M2": "vertical" }
+  },
   "pcb_layout": [
     {
       "rule": "antenna-keepout",

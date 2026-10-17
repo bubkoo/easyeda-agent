@@ -1,0 +1,72 @@
+{
+  "id": "block.uart_power_header_1x4",
+  "desc": "1×4 2.54mm 排针调试口:3V3 / GND 供电输入 + UART TX/RX 串口下载(外接 USB-TTL 适配器);配 block.tactile_boot_reset 手动进下载,是不带 USB 的裸片/模组最小系统板的供电与烧录入口",
+  "category": "mcu-support",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v1.14.1",
+  "updated": "v1.14.1",
+  "source": "official-ref:Espressif ESP32-S3 Hardware Design Guidelines(UART0 U0TXD/U0RXD 为默认下载口,IO0 低电平上电进下载)。排针 PZ254V-11-04P-RD(C41425294)库身份见 standard-parts.json;脚号 1..4 待 block-apply 网表对账核实。",
+  "validated": null,
+  "parts": {
+    "J": {
+      "part": "conn.header_1x4_254_xfcn",
+      "qty": 1,
+      "note": "1×4 直插排针。脚 1=3V3、2=GND、3=MCU_TX(板子发,接适配器 RX)、4=MCU_RX(板子收,接适配器 TX);丝印标脚名"
+    }
+  },
+  "internal_nets": [
+    ["J.1", "PORT:VCC"],
+    ["J.2", "PORT:GND"],
+    ["J.3", "PORT:TXD"],
+    ["J.4", "PORT:RXD"]
+  ],
+  "ports": {
+    "VCC": {
+      "dir": "in",
+      "at": "J.1",
+      "desc": "板外已稳压 3.3V 输入(适配器 3V3 脚,电流需覆盖 Wi-Fi 峰值 ~500mA;普通 USB-TTL 板载 LDO 常不够,建议独立 3.3V 电源)",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "J.2",
+      "desc": "系统地",
+      "default_net": "GND"
+    },
+    "TXD": {
+      "dir": "out",
+      "at": "J.3",
+      "desc": "主控 U0TXD 输出(接 block.esp32s3r8_chip_minsys 的 U0TXD port)→ 适配器 RX",
+      "default_net": "MCU_TX"
+    },
+    "RXD": {
+      "dir": "in",
+      "at": "J.4",
+      "desc": "主控 U0RXD 输入(接 block.esp32s3r8_chip_minsys 的 U0RXD port)← 适配器 TX",
+      "default_net": "MCU_RX"
+    }
+  },
+  "signal_marker": "net_label",
+  "schematic_notes": [
+    "网名从板子视角取:MCU_TX 是主控发出,接到外部适配器的 RX;不要按适配器视角交叉命名,否则两端各交叉一次等于没交叉。",
+    "本块不含按键;下载需 IO0 上电为低,配 block.tactile_boot_reset(BOOT/RESET 键)或自动下载电路。",
+    "netflag 必须经真实导线连到引脚(坐标重叠不算连接)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "edge-accessible",
+      "target": "J",
+      "constraint": "排针放板边,插针方向朝外或竖直,杜邦线插拔不压其它器件;远离天线净空区",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "silk-label",
+      "target": "J",
+      "constraint": "丝印逐脚标 3V3 / GND / TX / RX,脚 1 标识清楚",
+      "value": "",
+      "severity": "should"
+    }
+  ]
+}
