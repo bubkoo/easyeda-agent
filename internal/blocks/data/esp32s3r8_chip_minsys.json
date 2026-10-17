@@ -181,7 +181,7 @@
     {
       "rule": "xtal-adjacency",
       "target": "X / C_X1 / C_X2",
-      "constraint": "40MHz 晶振紧贴 XTAL_P/XTAL_N 脚(QFN 53/54 侧),两颗负载帽对称布置,XTAL_P/N 走线短且对称;晶振区包地(guard ring + 缝合过孔),下方勿走高速/RF 线(HDG §2.4)",
+      "constraint": "40MHz 晶振紧贴 XTAL_P/XTAL_N 脚(QFN 53/54 侧),两颗负载帽夹在芯片 XTAL 脚与晶振之间并排对称,信号焊盘朝内、GND 朝外,XTAL_P/N 先经负载帽焊盘再进晶振(不要摆到晶振外侧,现场例见 skill examples/esp32s3r8-crystal);XTAL_P/N 走线短且对称;晶振区包地(guard ring + 缝合过孔),下方勿走高速/RF 线(HDG §2.4)",
       "value": "晶振到芯片 <= 5mm,负载帽对称",
       "severity": "must"
     },
