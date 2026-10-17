@@ -2285,7 +2285,8 @@ so copper keeps clearance to the board outline (fixes Board-Outline-to-Copper).
 Reads the board outline (pcb.outline.get) and insets its bbox — v1 pours a
 RECTANGLE within the bbox (an odd-shaped outline still gets a rectangular plane;
 draw a custom polygon with 'pcb pour' for those). By default (--replace) it first
-clears existing pours on the same net so you don't stack them.`,
+clears existing pours on the same net AND layer so you don't stack them; pours of
+that net on other layers are kept (GND on TOP then BOTTOM is two calls).`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb pour-fit --project ceshi --net GND --layer 1
   easyeda pcb pour-fit --net GND --layer 1 --inset 25 --dry-run`,
@@ -2324,15 +2325,8 @@ clears existing pours on the same net so you don't stack them.`,
 				cleared := 0
 				if replace && !dryRun {
 					if lr, err := requestAction(cfg, "pcb.pour.list", window, nil); err == nil {
-						var ids []any
 						pours, _ := lr.Result["pours"].([]any)
-						for _, pi := range pours {
-							if pm, ok := pi.(map[string]any); ok && asString(pm["net"]) == net {
-								if id := asString(pm["primitiveId"]); id != "" {
-									ids = append(ids, id)
-								}
-							}
-						}
+						ids := pourIDsToReplace(pours, net, layer)
 						if len(ids) > 0 {
 							if _, err := requestAction(cfg, "pcb.pour.delete", window, map[string]any{"primitiveIds": ids}); err == nil {
 								cleared = len(ids)
@@ -2373,7 +2367,7 @@ clears existing pours on the same net so you don't stack them.`,
 		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2)")
 		c.Flags().Float64Var(&inset, "inset", 20, "inset from the board outline (mil; default = board's copper-to-edge rule ~8–10)")
 		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")
-		c.Flags().BoolVar(&replace, "replace", true, "clear existing pours on this net first (avoid stacking)")
+		c.Flags().BoolVar(&replace, "replace", true, "clear existing pours on this net and layer first (avoid stacking)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the computed pour polygon without drawing")
 		pcb.AddCommand(c)
 	}
