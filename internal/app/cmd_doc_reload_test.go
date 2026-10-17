@@ -76,6 +76,8 @@ func (fx *reloadFixture) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "pcb.save", "schematic.save":
 		result = fx.saveResult
+	case "pcb.page.clear":
+		result = map[string]any{"total": 0, "dryRun": req.Payload["dryRun"] == true}
 	case "pcb.components.list", "schematic.components.list":
 		result["count"] = 1
 		result["components"] = []any{map[string]any{"primitiveId": "stable-part"}}

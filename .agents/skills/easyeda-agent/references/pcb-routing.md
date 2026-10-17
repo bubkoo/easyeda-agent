@@ -170,6 +170,7 @@ EasyEDA 原生自动布线或已配置的外部路由器，完成后都按网回
   用这个。**默认保留锁定图元 + 板框(layer 11)**(板框是布局前提,和 `sch clear` 保留图框对称)。
   收窄:`--only components,routing,copper,regions,silk`(逗号子集,省略 = 全部);`--no-preserve-outline`
   连板框一起删;`--include-locked` 连锁定图元一起删(危险)。**无 undo**,确认门控。
+  封装内嵌过孔(QFN 散热焊盘自带)不单独删,随所属器件删除或保留,计入 `skippedEmbeddedVias`。
   **默认自带 verify 复合流程(#121)**:清 → save → `doc reload` → 二遍清 → 最终 dry-run 计数——
   部分图元只在 save/reload 时被引擎物化,单次 handler 调用内任何枚举(含 #112 的循环)都看不到
   (R2 实测 reload 后冒出 3 条轨);返回 `{pass1, pass2, remainingAfterVerify, verified}`,

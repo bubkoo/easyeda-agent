@@ -4934,6 +4934,11 @@ func runPcbClearVerified(cfg *appConfig, window string, payload map[string]any,
 		fmt.Fprintf(stderr, "warning: could not resolve the active document for the verify pass (%v) — cleared once, NOT verified; run `easyeda doc reload` then `pcb clear --dry-run` to check for reload-materialized leftovers (#121)\n", err)
 		return writeJSON(stdout, out)
 	}
+	// The reload pins every step to one window. Under --project the flag window
+	// is empty, which no response matches — pin the window that answered.
+	if cur.WindowID != "" {
+		window = cur.WindowID
+	}
 	if _, err := reloadDocumentByUUID(cfg, window, cur.Context.DocumentUUID); err != nil {
 		fmt.Fprintf(stderr, "warning: reload for the verify pass failed (%v) — cleared once, NOT verified (#121)\n", err)
 		return writeJSON(stdout, out)

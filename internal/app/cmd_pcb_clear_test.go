@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -76,5 +78,30 @@ func TestBuildPcbClearPayload_OnlyWhitespaceIsAll(t *testing.T) {
 	}
 	if _, ok := got["only"]; ok {
 		t.Errorf("expected no 'only' key for whitespace-only input, got %v", got["only"])
+	}
+}
+
+// Under --project the window flag is empty; the verify pass must pin the window
+// that answered, or every reload step mismatches and the clear is never
+// verified (live 2026-10-17: "reload response window differs from pinned window").
+func TestPcbClearVerifiedPinsAnsweringWindow(t *testing.T) {
+	fx, cfg := newReloadFixture(t, false)
+	payload, err := buildPcbClearPayload("", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := runPcbClearVerified(cfg, "", payload, "", false, false, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatal(err, stdout.String())
+	}
+	if out["verified"] != true || out["pass2"] == nil || out["remainingAfterVerify"] == nil {
+		t.Fatalf("verify pass did not run: %v\nstderr: %s", out, stderr.String())
+	}
+	if fx.openCount != 1 {
+		t.Fatalf("reload open count=%d, want 1", fx.openCount)
 	}
 }

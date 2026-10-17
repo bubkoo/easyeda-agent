@@ -2361,6 +2361,28 @@ test('pcbPageClear: locked preserved by default, removed with includeLocked', as
 	delete (globalThis as any).eda;
 });
 
+test('pcbPageClear: footprint-embedded vias stay out of the via delete; standalone vias still go', async () => {
+	// Live 2026-10-17: an ESP32-S3 QFN with 9 EPAD thermal vias (<componentId>e<n>)
+	// made the via batch throw, so a clean board reported failed:["vias"].
+	const s = installPcbClearStub({
+		components: [pcbPrim('6ea58e4ac6716d3d', 1), pcbPrim('e2', 1)],
+		vias: [pcbPrim('6ea58e4ac6716d3de184'), pcbPrim('6ea58e4ac6716d3de185'), pcbPrim('v9'), pcbPrim('e200')],
+	});
+	const realVias = (globalThis as any).eda.pcb_PrimitiveVia;
+	(globalThis as any).eda.pcb_PrimitiveVia = {
+		getAll: realVias.getAll,
+		delete: async (ids: string[]) => {
+			if (ids.some(id => id.startsWith('6ea58e4ac6716d3de'))) throw new Error("Cannot read properties of undefined (reading 'length')");
+			return realVias.delete(ids);
+		},
+	};
+	const res: any = await pcbPageClear({});
+	assert.equal(res.result.failed, undefined, JSON.stringify(res.result.warnings));
+	assert.deepEqual((s.deleted.vias ?? []).sort(), ['e200', 'v9'], 'e200 merely shares the e2 prefix; it is an independent via');
+	assert.equal(res.result.skippedEmbeddedVias, 2);
+	delete (globalThis as any).eda;
+});
+
 test('pcbPageClear: dryRun reports counts without calling any delete', async () => {
 	const { deleted } = installPcbClearStub({ components: [pcbPrim('U1', 1)], pours: [pcbPrim('p1', 1)] });
 	const res: any = await pcbPageClear({ dryRun: true });
