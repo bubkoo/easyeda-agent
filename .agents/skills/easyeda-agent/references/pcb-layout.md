@@ -263,9 +263,23 @@ PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令�
 已有 SVG 丝印导入保持原契约；[透明 PNG 离线样例](examples/image-import/README.md)仅验证参考图片。
 
 - `easyeda pcb silk-import-svg` — **import an SVG (logo / brand mark / artwork) as a FILLED silkscreen graphic** (`pcb.silk.import_svg` → `eda.pcb_PrimitiveImage.create`) — the typed path for placing a vector graphic on a PCB **without `debug.exec_js`**. The CLI parses the SVG (path `M/L/H/V/C/S/Q/T/A/Z`, `polygon`/`polyline`/`rect`/`circle`/`ellipse`/`line`, nested `transform`, viewBox), **flattens every curve to line segments**, applies viewBox→mil scaling, and sends the resulting **complex polygon** (contours + **even-odd holes**, so a logo's counters — the hole in an "o" — punch through) to the connector, which creates **one** image primitive on the silk layer. `--file <path>`/`--svg <string>`; `--x/--y` (or `--at "x,y"`) = where the artwork's **top-left** lands (mil); `--width`/`--height` in mil (`--keep-aspect` for uniform scaling; only one given ⇒ aspect always preserved); `--layer` 3=top (default) / 4=bottom (auto-mirrors); `--rotation`/`--mirror`; `--flatten-tol` (curve tolerance mil). **`--dry-run` parses + scales WITHOUT touching the editor** and prints target bbox / contour count / vertex count / **min-feature** (a DFM proxy — warns when < `--min-line-width`, JLCPCB silk min ≈ 6 mil) — always dry-run first. **Fill rule is even-odd; stroke-only art is not stroked (all geometry is filled).** Returns `primitiveId` + rendered `bbox`. **Real-machine verified**: creates on top/bottom silk, holes punch, rotation/mirror honored, and it **persists across `doc reload` + `pcb save`** (same primitiveId/bbox). Note: the image is a distinct primitive type — it does **not** appear in `pcb silk-list` (that lists silk *text*); read it back via `pcb check` (runs clean) or a snapshot. After a real import follow reload → check → `pcb save`.
-- **Teardrops (泪滴) — `unsupported`.** `eda.*` has no verified create/apply-teardrop API
-  (teardrops appear only as a `getManufactureFile` object type, never as a constructable primitive)。禁止用
-  交互菜单补做；实现 typed 创建、对象回读与持久化验证前，此项保持未完成。
+- **原生泪滴对象 — `unsupported`.** `eda.*` 没有创建原生泪滴的接口（0.4.25 类型与 Web 4.1.78 运行时均查无；
+  TearDrop 只是 Gerber 导出的对象类别）。禁止用交互菜单补做。题目允许「线条形状泪滴」时用下面的
+  `teardrop-plan`：它画的是普通网络铜，交付说明里如实写“线条形泪滴”，不称原生泪滴对象。
+- `easyeda pcb teardrop-plan` — **线条形泪滴（离线规划 + apply 剧本）**：读 fresh `pcb dump --include-copper`，
+  对走线进入同网焊盘处画两条同宽收窄线（焊盘边 → 走线上一点，半张角 ≤ ~35°，两尖端错开 1 mil）。
+  只做无歧义入口：沿轴、焊盘唯一入口、保持 `--clearance`（默认规则 +0.5）；对端也是焊盘时各占一半不交叉；
+  尖端避开共线分段的接缝与 T 型交汇；圆/椭圆焊盘按真实轮廓取底边。`--exclude-net` 排除调过阻抗/拓扑的网
+  （RF 馈线、晶振）。宿主会在尖端把原走线拆段——`--remove-from <旧计划>` 生成删除剧本（含碎段）。
+  `pcb check` 识别成对泪滴，不算锐角/非 45°。之后 pour-rebuild → save → reload → DRC。
+- `easyeda pcb neckdown-plan` — **焊盘入口缩颈**：走线比所进焊盘窄边还宽时（如 10/20 mil 进 0.4 mm QFN 的
+  7.9 mil 焊盘），只把焊盘内 + `--extra`（默认 10 mil）一段改成 `--width`，其余保持；`--tolerance`（默认 0.5）
+  内视为合适，剩余不足 5 mil 的原宽碎段并入窄段。锁定线只报告。新宽度必须满足该网线宽规则最小值。
+- `easyeda pcb silk-plan` — **丝印离线排布**：按 dump 实测字框（先 `silk-set --font-family Arial --font-size 45`）
+  放位号，避开全部焊盘/器件本体/其他丝印/板边，按字中心归属（离本件比离任何他件近）；`--allow-90` 允许
+  第二朝向（考试「朝向不超过 2 个方向」）；最受限者先放，放不下就列出、不强塞；`--only` 只重排指定位号。
+  `--hint J1.3=TX` 在焊盘旁加接口提示（离该焊盘比离同件其他焊盘近），`--note '板名@x,y'` 在点附近空位
+  加板名/署名。锚点：属性左下、`pcb.silk.add` 自由字符串左上（实测）。
 - `easyeda pcb route-critical` — **P7.0 关键网络先行,一条命令(#127)**:自动布线器最不擅长的两类先确定性做掉再锁死。**① power**:铜层数 ≥4 → `power-planes`(内电层),2 层 → `power-pour`(双面 GND+轨局部 pour);**② diff**:差分对识别双源合并——**块库 `signals` map**(type=diff_pair,带 90Ω/120Ω 阻抗与 `length_match_mm` 预算;USB_D/RS485_AB/USB-hub 各下行对)+ 保守**名字模式**扫描实网(`X_DP/X_DM`、`X_P/X_N`、`X+/X−`),每对用 short-route 规划器 45° 角同层成对布线,**逐对实测两侧长度与 skew**,超预算(默认 5mil,块值优先)**响亮报告不静默接受**(v1 不做蛇形调谐——本项目的对都是连接器→芯片短对,"成对、尽量短"就是规格);**③ lock**:`pcb.track.lock` 锁住布好的对网。之后剩余普通信号交正常档(route-short/用户点原生自动布线)。层数须来自有效实时证据；`--spec` 的层数与实板冲突时拒绝，不默认按两层继续。执行前读取板框、布局、规则和实际网络，结果按网络回读；旧 stage 状态不决定能否执行。`--dry-run` 只识别+规划;`--skip-power`/`--skip-diff`/`--no-lock` 单独关某步。
 - `easyeda pcb track-lock` — **锁定/解锁已布铜皮**(#127,typed action `pcb.track.lock`,已从 debug.exec_js 版毕业):track+**arc**(beautify 圆角,旧 JS 版漏)+via+net-bound fill(`--no-fills` 排除);`--net`(可重复/逗号)/`--ids`/`--all`(仍要求 net≠"",板框永不隐式锁)三选一,`--unlock` 反向。**pour 永不锁**(要 reflow)。幂等:已处于目标态只计数。P7.0 契约:关键铜锁死后,原生自动布线/rip-up/pour-rebuild 都动不了它(rip_up 明确跳过 locked)。
 - `easyeda pcb zones` — **功能分区一等公民(#126)**:把 S0 方案书 spec 的 `modules[].zone`(MCU 区/电源区/RF 区…)落成可执行、可校验的 claim 表。`zones set --spec <s0-spec.json>`(或手动 `--module "RF=right-top:U2,ANT1"`,可重复)把 module→{九宫格 zone, 器件清单} 持久化为项目 zone claim 数据(旧实现与 workflow 文件同库存储,跨 cwd 生效);zone 词汇 = 原理图 autolayout 同一套九宫格(`left/center/right × top/bottom` 及全高/全宽形式,共享词汇表),矩形在**消费时**从实时板框 bbox 解析(改板框不用重设 claim)。消费方:① `pcb place-constrained` — 被 claim 的**主芯片**若在区外→迁入该区(spiral 找位,diag `main:zoned:<module>`),**卫星件**合法化限制在区内(区满则出区放置+`satellite:zone-overflow` 诊断,check 会继续曝光);**边缘件豁免**(出边是比分区更硬的约束,diag 标 `:zone-exempt`);② `pcb check` 的 **zone-violation** 规则(见上文规则清单)。`zones status` 显示 claim + 实时违规速览;`zones clear` 清除。claim 是 spec 契约:布局失效/重摆不清它,只有 clear/重 set 会动。真机验证:ceshi 4 违规 → place-constrained 落区后 1(剩余那条正是「claim 与贴边矛盾」的真问题)。

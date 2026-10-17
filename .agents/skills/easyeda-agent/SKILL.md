@@ -55,6 +55,7 @@ metadata:
 | 需求、选型与设计取舍 | [设计流程](references/design-flow.md)、[决策参考](references/design-decisions.md)、[器件选型](references/part-selection.md) |
 | 原理图数据、布局与 Apply | [数据契约](references/schematic-data.md)、[执行步骤](references/auto-layout-sop.md) |
 | 原理图检查或局部修复 | [原理图](references/schematic.md)、[放置](references/schematic-placement.md)、[连接](references/schematic-wiring.md) |
+| 按考试评分细则出板（规则→布局→布线→泪滴→丝印） | [考试推荐流程](references/exam-pcb-workflow.md) |
 | PCB 布局与机械 | [PCB](references/pcb.md)、[布局](references/pcb-layout.md) |
 | PCB 布线、铺铜与禁布区 | [布线](references/pcb-routing.md) |
 | 规则与网络类 | [配置](references/pcb-config.md) |

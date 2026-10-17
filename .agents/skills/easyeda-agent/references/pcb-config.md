@@ -86,7 +86,7 @@ Web 4.1.60 基础用例发现：从系统预设首次写为自定义配置时，
 
 2026-09-20 已对照最新 `@jlceda/pro-api-types@0.4.25`，并在 Web 3.2.203 只读枚举实际
 `SYS_Setting` 与 `SCH_Drc`：前者仍仅 `restoreDefault`、后者仅 `check`。上述缺口不能靠更新
-类型包或关闭 DRC 解决。原生泪滴创建同样没有公开 API，导出 Gerber 的 TearDrop 枚举不是创建方法。
+类型包或关闭 DRC 解决。原生泪滴创建同样没有公开 API（题目允许线条形泪滴时用 `pcb teardrop-plan`），导出 Gerber 的 TearDrop 枚举不是创建方法。
 
 规则配置不改变已有走线宽度、过孔尺寸，也不自动布线。最后仍须检查真实轨迹、DRC 和连通。
 `pcb stackup set` 现会逐层回读并在宿主拒绝或未应用时非零退出；本次现场也证明即时成功不等于
