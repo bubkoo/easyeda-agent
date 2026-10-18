@@ -80,8 +80,6 @@ NC 清除本次成功也不关闭 #257 的间歇问题；严格基础准入仍�
 
 | Bug | 影响判断 | 当前使用方式 |
 |---|---|---|
-| [#256：原理图 modify 间歇 cmdKey](https://github.com/zhoushoujianwork/easyeda-agent/issues/256) | 暂定 P2：可能中断单次修改或批次；本轮对照未复现，根因未知，不能估计发生率。 | 保留命令和失败退出；失败后核对目标与实际字段，再决定后续操作。 |
-| [#257：NC 清除间歇未生效](https://github.com/zhoushoujianwork/easyeda-agent/issues/257) | 暂定 P2：涉及引脚电气属性；现有 CLI 已通过回读检测本次未生效并非零退出。 | 保留命令；清除后检查 noConnected，关键结果保存重载复核。 |
 | [#258：规则首次初始化出现微小差异](https://github.com/zhoushoujianwork/easyeda-agent/issues/258) | 暂定 P3：已观察差值 0.0000006 mm 很小，但非请求字段变化与校验失败仍需定位。 | 展示完整差分，保留 verified:false；已冻结自定义规则的后续操作单独验证。 |
 | [#55：页面改名被拒绝](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) | 暂定 P2：dev.9 B04 官方返回 false，fresh 名称仍 P2，基础验收失败。 | 重新打开原 issue；失败传播已修复，实际改名仍待定位。保留非零退出，不用无关写入或重复改名恢复。 |
 | [#260：区域/铺铜边界线宽 1→0.2 mil](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) | 暂定 P2：显式参数未兑现，B08 失败；未证明电气损坏程度或三个对象类型同源。 | dev.11 已能 fresh 检出并停止依赖；宽度本身未修复。保留 ID，精确清理并保存重载核对。 |

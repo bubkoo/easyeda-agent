@@ -132,3 +132,22 @@ test('the running request budget is visible to handler waits and cleared after',
 	setActiveDeadline(undefined);
 	assert.equal(remainingBudgetMs(), undefined);
 });
+
+test('a quiet window restarts when a sync appears after the first idle sample (#256/#257)', async t => {
+	const { runner, idle } = fixture(t);
+	idle();
+	const started = Date.now();
+	const busyAt = setTimeout(() => Object.assign(runner, { running: true, currentAction: { name: 'RealTimeSync', status: 'running' } }), 20);
+	const idleAt = setTimeout(idle, 50);
+	t.after(() => { clearTimeout(busyAt); clearTimeout(idleAt); });
+	await waitForSchematicReady(context, 5000, undefined, 60);
+	assert.ok(Date.now() - started >= 105, `resolved after ${Date.now() - started} ms, before the post-sync quiet window`);
+});
+
+test('without a quiet window one idle sample is still enough', async t => {
+	const { idle } = fixture(t);
+	idle();
+	const started = Date.now();
+	await waitForSchematicReady(context);
+	assert.ok(Date.now() - started < 40);
+});

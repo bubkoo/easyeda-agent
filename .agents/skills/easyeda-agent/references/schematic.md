@@ -224,21 +224,14 @@ PowerShell 可用 `'{"rotation":90}' | Set-Content -Encoding UTF8 patch.json` �
 原理图的显式 `--x/--y/--rotation/--designator` 仍覆盖文件中的同名键；
 PCB 的 `--center` 仍不允许补丁包含 x/y/rotation。
 
-### 引脚读取后的编辑失败（Web 4.1.60）
+### 引脚读取后的编辑失败（已修复，连接器 1.14.2）
 
-基础调用链现场观察到 `sch list --include-pins` 后紧接 `sch modify` 返回
-`cmdKey` 异常；同样的读取后清除 NC 也曾未持久化。先 fresh 回读确认失败调用没有改变
-目标，再 typed `doc open <原页UUID>`，核对工程/页身份后执行原操作，两个单项均恢复成功。
-这只证明特定时序及恢复办法，尚未证明所有失败都由网表读取引起。不能盲重放可能部分
-成功的写入，也不能把增加 reopen 的成功补签为原始连续调用通过；原失败证据仍保留。后续 16 次隔离修改及 NC 对照未复现，网表读取或保存本身
-尚不能解释触发条件；未定位根因前不要加入无条件 reopen 或重试。
-
-当前分别以 [bug #256](https://github.com/zhoushoujianwork/easyeda-agent/issues/256)（cmdKey）和
-[bug #257](https://github.com/zhoushoujianwork/easyeda-agent/issues/257)（NC 清除）跟踪，不假定同源。
-命令继续可用，但失败退出仍须停止依赖步骤；NC 清除后核对指定引脚 `noConnected:false`，
-关键结果保存重载再读。dev.21 起，`sch modify` 与 `sch no-connect --clear` 在 stderr
-提示对应 bug 和回读要求，stdout 保留原始 JSON；`partial`、`verified:false` 和未生效字段
-仍非零退出。提示本身不说明本次失败，不触发自动重试，也不代表 bug 已修复。
+读引脚网络会导出网表；宿主在导出完成后 7–21 ms 才启动一次 RealTimeSync，紧随的写入如果撞上它，
+`sch modify` 会报 `cmdKey` 异常，`sch no-connect --clear` 会不生效
+（[#256](https://github.com/zhoushoujianwork/easyeda-agent/issues/256)、
+[#257](https://github.com/zhoushoujianwork/easyeda-agent/issues/257)）。连接器 1.14.2 起，导出后要求宿主连续空闲
+150 ms 才返回，Web 4.1.78 前台实测两类失败都降为 0。旧连接器上仍须避免"读引脚后立刻写"。
+写入失败照旧非零退出：先 fresh 回读确认目标没被改变，不盲重试；NC 清除后核对 `noConnected:false`。
 
 ### 原生 net_label 兼容性（#191）
 

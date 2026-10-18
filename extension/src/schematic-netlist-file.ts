@@ -9,7 +9,11 @@ export class NetlistContextError extends ActionError {
 /**
  * Export may finish while its annotation updates are still being synchronized.
  * Preserve identity and await the observed transaction; input focus is unrelated.
+ * The host starts that RealTimeSync only after the export promise resolves, so
+ * require a quiet idle window rather than one idle sample (#256/#257).
  */
+export const NETLIST_EXPORT_QUIET_MS = 150;
+
 export async function getSchematicNetlistFile(fileName?: string, type?: ESYS_NetlistType): Promise<File | undefined> {
 	let before;
 	try { before = await eda.dmt_SelectControl.getCurrentDocumentInfo(); }
@@ -24,7 +28,7 @@ export async function getSchematicNetlistFile(fileName?: string, type?: ESYS_Net
 	}
 	finally {
 		try {
-			await waitForSchematicReady({ uuid: before.uuid, tabId: before.tabId }, 5000, readiness);
+			await waitForSchematicReady({ uuid: before.uuid, tabId: before.tabId }, 5000, readiness, NETLIST_EXPORT_QUIET_MS);
 		}
 		catch (err) {
 			if (err instanceof NetlistContextError) throw err;

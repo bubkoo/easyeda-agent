@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- 原理图网表导出（`sch list --include-pins` 等读引脚网络的命令）后，连接器要求宿主连续空闲 150 ms 才返回（#256/#257）：宿主在导出 promise 完成后 7–21 ms 才启动 RealTimeSync，原先只采样一次空闲就返回，紧随其后的 `sch modify` 会被拒（cmdKey），`no-connect --clear` 会不生效。Web 4.1.78 前台实测：读引脚后立刻 modify 由 7/80 失败降到 0/40，立刻清 NC 由 19/35 降到 0/20；读引脚的代价约增加 0.2 秒。
 - `pcb rip-up` 的过孔范围排除封装内嵌过孔（QFN 散热焊盘），与 `pcb clear` 一致；此前整板 rip-up 会把它们放进删除批次。
 - `pcb check` via-in-pad 改按焊盘真实矩形判定过孔铜是否压上焊盘：此前把焊盘当成以最长半边为半径的圆，距 SOIC 长焊盘 12.5 mil 的 dog-bone 过孔也被报。
 - `pcb autoroute` 默认改用官方路由器：新 typed action `pcb.route.auto` 调 `eda.pcb_Document.autoRouting`（@beta，Web 4.1.78 现场可用，与原生「自动布线」对话框同一引擎、无弹窗）。已有导线/过孔一律保留，支持 `--net`、`--ignore-net`、`--layers`、`--corner`、`--optimize`、`--timeout`；返回路由器逐网结果、新建铜计数、被删图元与丢失的锁定铜，锁定铜丢失时命令失败；画布未变且有失败网时报错（路由器 `success:true` 只表示已启动）。外部引擎改为 `--router` / `FREEROUTING_CMD` 显式启用。

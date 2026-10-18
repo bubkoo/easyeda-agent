@@ -44,8 +44,14 @@ func TestKnownBugAdvisoriesPreserveResultsAndFailures(t *testing.T) {
 				if strings.TrimSpace(out.String()) != response {
 					t.Fatalf("raw JSON changed: %s", out.String())
 				}
-				if !strings.Contains(stderr.String(), "warning [bug "+tc.bug+"]") {
-					t.Fatalf("missing advisory: %s", stderr.String())
+				if tc.bug == "#258" {
+					if !strings.Contains(stderr.String(), "warning [bug "+tc.bug+"]") {
+						t.Fatalf("missing advisory: %s", stderr.String())
+					}
+				} else {
+					if strings.Contains(stderr.String(), "bug "+tc.bug) {
+						t.Fatalf("stale advisory for fixed bug %s: %s", tc.bug, stderr.String())
+					}
 				}
 				if len(calls.snapshot()) != 1 {
 					t.Fatalf("unexpected retry/extra action: %+v", calls.snapshot())

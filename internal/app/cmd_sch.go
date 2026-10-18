@@ -804,7 +804,6 @@ platform still dropped is reported in result.notApplied (non-zero exit).`,
 				if len(overridden) > 0 {
 					fmt.Fprintf(stderr, "note: flag value(s) override --patch key(s): %s\n", strings.Join(overridden, ", "))
 				}
-				fmt.Fprintln(stderr, knownBugSchModify)
 				res, err := dispatchCapture(cfg, "schematic.component.modify", window,
 					map[string]any{"primitiveId": id, "patch": patch}, stdout)
 				if err != nil {
@@ -1613,7 +1612,6 @@ pull fresh ids before any follow-up mutation on it.`,
 				}
 				if clear {
 					payload["noConnected"] = false
-					fmt.Fprintln(stderr, knownBugNCClear)
 				}
 				res, err := dispatchCapture(cfg, "schematic.pin.set_no_connect", window, payload, stdout)
 				if err != nil {

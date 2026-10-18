@@ -92,13 +92,22 @@ export function readinessWaitMs(timeoutMs: number, hidden: boolean, remainingMs:
 	return Math.max(timeoutMs, remainingMs);
 }
 
-/** Wait on observed RealTimeSync state, never on an assumed fixed settling delay. */
-export async function waitForSchematicReady(context: SchematicContext, timeoutMs = 5000, captured = captureSchematicReadiness(context)): Promise<void> {
+/**
+ * Wait on observed RealTimeSync state, never on an assumed fixed settling delay.
+ *
+ * `quietMs` > 0 additionally requires the runner to STAY idle that long; any
+ * observed transaction restarts the window. A completed netlist export queues
+ * its RealTimeSync from a host task 7–21 ms later (live 4.1.78, #256/#257), so
+ * a single idle sample right after export is not readiness: a write landing in
+ * that sync is refused (cmdKey) or its no-connect change is dropped.
+ */
+export async function waitForSchematicReady(context: SchematicContext, timeoutMs = 5000, captured = captureSchematicReadiness(context), quietMs = 0): Promise<void> {
 	timeoutMs = readinessWaitMs(timeoutMs, pageVisibility() === 'hidden', remainingBudgetMs());
 	const expiresAt = Date.now() + timeoutMs;
 	await new Promise<void>((resolve, reject) => {
 		let settled = false;
 		let poll: ReturnType<typeof armDeadline> | undefined;
+		let idleSince: number | undefined;
 		const finish = (error?: unknown): void => {
 			if (settled) return;
 			settled = true;
@@ -116,8 +125,15 @@ export async function waitForSchematicReady(context: SchematicContext, timeoutMs
 					throw new SchematicReadinessError(ErrorCodes.INVALID_STATE, 'Schematic document identity changed while waiting for readiness.');
 				}
 				assertSchematicReadinessContext(context, captured);
-				if (isIdle(captured.runner)) finish();
-				else poll = armDeadline(50, () => { void check(); });
+				if (!isIdle(captured.runner)) {
+					idleSince = undefined;
+					poll = armDeadline(quietMs > 0 ? 10 : 50, () => { void check(); });
+					return;
+				}
+				idleSince ??= Date.now();
+				const quietLeft = quietMs - (Date.now() - idleSince);
+				if (quietLeft <= 0) finish();
+				else poll = armDeadline(Math.min(10, quietLeft), () => { void check(); });
 			}
 			catch (err) { finish(err instanceof SchematicReadinessError ? err : new SchematicReadinessError(ErrorCodes.INVALID_STATE, `Cannot read schematic readiness: ${String(err)}`)); }
 		};
