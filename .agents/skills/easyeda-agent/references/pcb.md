@@ -66,6 +66,32 @@ Board 绑定正确且可见 pin/net 一致时，官方 `Import Changes` 告警�
 
 ## Actions
 
+### 真实 PCB 三维导出
+
+```sh
+easyeda health
+easyeda doc switch <pcb-uuid> --project <project-uuid> --window <edadesk-window-id>
+easyeda pcb export-3d --format obj --project <project-uuid> --doc <pcb-uuid> --window <edadesk-window-id> --out ./board-3d
+easyeda pcb export-3d --format step --project <project-uuid> --window <edadesk-window-id> --out ./board-step
+```
+
+`pcb.export.3d` 只走官方 beta `pcb_ManufactureData.get3DFile`，要求活动页是 PCB，
+原样传输返回文件，大小上限 20 MiB。接口说明：
+[get3DFile](https://prodocs.lceda.cn/cn/api/reference/pro-api.pcb_manufacturedata.get3dfile.html)。
+命令要求精确 `--window` 和不存在的 `--out` 目录；先后采集完整板回读并核对身份与
+`semanticSha256`，校验模型字节、哈希、OBJ 网格或 STEP 签名，以及 ZIP 的 CRC、路径和展开上限。
+目录含 `board-before.json`、`board-after.json`、`export-response.json`、模型和 `manifest.json`。
+失败保留已有证据，不自动重试；`manifest.status=export-verified` 不等于交互预览或制造验收通过。
+
+默认 `--format obj --model-mode Outfit --elements 'Component Model'`，导出板体和元件。
+需额外表面图形时显式加 `--elements 'Component Model,Via,Silkscreen,Wire In Signal Layer'`；
+附加几何以宿主输出为准，不能据文件存在证明铜面与丝印显示正确。
+官方宿主可能返回 ZIP，不能按扩展名假设是裸 OBJ。OBJ 预览要保留同包材质路径。
+默认不自动生成器件模型；`--auto-generate-models` 明确请求按高度生成的占位外形，必须标注。
+`models[].status=bound|unbound|unknown` 只证明当前绑定状态，不证明模型成功进入导出文件。
+STEP 仅能包含从 STEP 导入的元件模型。导出后独立核对板体、器件、朝向、缺项及可旋转缩放；
+不以文件非空、命令成功或所有模型已绑定代替显示与完整性验证。
+
 ### Navigation
 
 - `pcb.documents.list` — all PCB documents in the project (uuid + name); pair with `document.open`.

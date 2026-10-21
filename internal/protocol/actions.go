@@ -1424,6 +1424,12 @@ func AllActions() []ActionSpec {
 		},
 		// ─── Freerouting round-trip (export DSN → external router → import SES) ──
 		{
+			Name: "pcb.export.3d", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Description: "Export the active PCB through official beta get3DFile (OBJ or STEP). Read-only; preserves the returned file/container, capped at 20 MiB. Reports component model bindings, not guaranteed export coverage. STEP includes only STEP source models. CLI verifies artifact bytes and binds export to fresh before/after board readbacks.",
+			Inputs:      []string{"fileType optional (obj|step, default obj)", "fileName optional (basename)", "modelMode optional (Outfit|Parts)", "elements optional (official names, default Component Model)", "autoGenerateModels optional (default false)"},
+			Outputs:     []string{"artifactId", "fileType", "size", "exportContext", "models", "modelCoverage=binding-only"},
+		},
+		{
 			Name:        "pcb.export.dsn",
 			Domain:      DomainPcb,
 			Phase:       2,

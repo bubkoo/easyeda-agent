@@ -1,4 +1,5 @@
 import { projectOpen, projectExport, projectImport } from './project-transfer';
+import { pcbExport3D } from './pcb-export-3d';
 import { moveSchematicAttribute } from './schematic-attribute-move';
 import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { applyAndVerifyPourOrder, preparePourOrder, PourOrderError, verifyPourOrderReadback, type PourOrderVerification } from './pcb-pour-order';
@@ -15945,6 +15946,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.fill.delete': pcbFillDelete,
 	'pcb.save': pcbSave,
 	'pcb.export.dsn': pcbExportDsn,
+	'pcb.export.3d': pcbExport3D,
 	'pcb.import_autoroute': pcbImportAutoroute,
 	'pcb.view.filter.get': pcbViewFilterGet,
 	'pcb.snapshot': pcbSnapshot,
