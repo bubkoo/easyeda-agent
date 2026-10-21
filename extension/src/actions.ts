@@ -11197,9 +11197,73 @@ const boardCopy: Handler = async (payload) => {
 	return { result: { boardName: newName } };
 };
 
-/** Delete a Board by name. */
+/** One schematic/PCB document as the delete actions plan and report it. */
+type ProjectDocument = { kind: 'pcb' | 'schematic'; uuid: string; name: string; parentBoardName: string | null };
+
+/** Read every schematic + PCB document in the project (the delete actions' readback source). */
+async function readProjectDocuments(): Promise<Array<ProjectDocument>> {
+	const [schematics, pcbs] = await Promise.all([eda.dmt_Schematic.getAllSchematicsInfo(), eda.dmt_Pcb.getAllPcbsInfo()]);
+	return [
+		...(schematics ?? []).map(s => ({ kind: 'schematic' as const, uuid: s.uuid, name: s.name, parentBoardName: s.parentBoardName ?? null })),
+		...(pcbs ?? []).map(p => ({ kind: 'pcb' as const, uuid: p.uuid, name: p.name, parentBoardName: p.parentBoardName ?? null })),
+	];
+}
+
+/**
+ * Poll the project document list until none of `uuids` is listed (≤5s — the
+ * document tree updates asynchronously after a delete). Returns the last read;
+ * a read failure is NOT "gone" — callers treat an unreadable list as unverified.
+ */
+async function documentsAfterDelete(uuids: Array<string>): Promise<Array<ProjectDocument> | undefined> {
+	const deadline = Date.now() + 5_000;
+	for (;;) {
+		let docs: Array<ProjectDocument> | undefined;
+		try { docs = await readProjectDocuments(); }
+		catch { docs = undefined; }
+		if (docs && !docs.some(d => uuids.includes(d.uuid))) return docs;
+		if (Date.now() >= deadline) return docs;
+		await sleep(500);
+	}
+}
+
+/**
+ * Delete a Board AND the schematic + PCB documents it binds.
+ *
+ * `dmt_Board.deleteBoard` alone only removes the grouping — live 2026-10-21 the
+ * Board vanished but its PCB and schematic pages stayed in the project, so the
+ * documents are deleted explicitly (dmt_Pcb.deletePcb / dmt_Schematic.deleteSchematic)
+ * after the binding is gone. The planned document list is returned BEFORE any
+ * mutation on dryRun, and the result reports what the fresh document readback
+ * proves deleted vs. still present — the platform's boolean is not evidence.
+ * keepDocuments=true keeps the old unbind-only behaviour (documents listed as residual).
+ *
+ * Once deleteBoard succeeded the project has changed, so a document that will
+ * not go away is a structured partial (#151), never a throw.
+ */
 const boardDelete: Handler = async (payload) => {
 	const name = requireString(payload, 'name');
+	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+	const keepDocuments = optionalBoolean(payload, 'keepDocuments') === true;
+
+	let board: BoardItem | undefined;
+	try {
+		board = ((await eda.dmt_Board.getAllBoardsInfo()) ?? []).find(b => b?.name === name);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list Boards before delete.');
+	}
+	if (!board) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Board "${name}" was not found; nothing was deleted.`);
+	}
+	const documents: Array<ProjectDocument> = [];
+	if (board.pcb?.uuid) documents.push({ kind: 'pcb', uuid: board.pcb.uuid, name: board.pcb.name, parentBoardName: name });
+	if (board.schematic?.uuid) documents.push({ kind: 'schematic', uuid: board.schematic.uuid, name: board.schematic.name, parentBoardName: name });
+	const toDelete = keepDocuments ? [] : documents;
+
+	if (dryRun) {
+		return { result: { name, dryRun: true, keepDocuments, documents, wouldDelete: toDelete } };
+	}
+
 	let ok;
 	try {
 		ok = await eda.dmt_Board.deleteBoard(name);
@@ -11207,7 +11271,96 @@ const boardDelete: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to delete Board.');
 	}
-	return { result: { ok } };
+	if (!ok) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `EasyEDA refused to delete Board "${name}"; its documents were not touched.`);
+	}
+
+	const warnings: Array<string> = [];
+	for (const doc of toDelete) {
+		try {
+			const done = doc.kind === 'pcb'
+				? await eda.dmt_Pcb.deletePcb(doc.uuid)
+				: await eda.dmt_Schematic.deleteSchematic(doc.uuid);
+			if (!done) warnings.push(`EasyEDA returned false deleting ${doc.kind} "${doc.name}" (${doc.uuid}); readback decides.`);
+		}
+		catch (err) {
+			warnings.push(`Deleting ${doc.kind} "${doc.name}" (${doc.uuid}) threw: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
+	const after = await documentsAfterDelete(toDelete.map(d => d.uuid));
+	let boardGone = false;
+	try { boardGone = !((await eda.dmt_Board.getAllBoardsInfo()) ?? []).some(b => b?.name === name); }
+	catch { /* unverified */ }
+	const residual = after ? documents.filter(d => after.some(a => a.uuid === d.uuid)) : documents;
+	const deleted = after ? toDelete.filter(d => !after.some(a => a.uuid === d.uuid)) : [];
+	if (!after) warnings.push('The project document list could not be read back; deletion is unverified.');
+	if (!boardGone) warnings.push(`Board "${name}" is still listed after deleteBoard returned success.`);
+	const complete = boardGone && !!after && deleted.length === toDelete.length;
+	if (!complete) warnings.push('Partial delete: do not retry blindly — inspect `residual` and the project document list first.');
+	return {
+		result: { name, boardDeleted: boardGone, keepDocuments, documents, deleted, residual, partial: !complete, verified: complete },
+		warnings,
+	};
+};
+
+/**
+ * Delete one exact PCB document. Preflight is UUID + expectedName against the
+ * project's PCB list, and a PCB still bound to a Board is refused (delete the
+ * Board with board.delete, which takes its documents too, or unbind it first
+ * with board.delete keepDocuments=true). Verified by the fresh document list:
+ * the PCB must be gone. deletePcb also removes the schematic of a reuse-module
+ * (复用模块) PCB — any other document that disappeared is reported in alsoDeleted.
+ */
+const pcbDocumentDelete: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const expectedName = requireString(payload, 'expectedName');
+	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+
+	let before: Array<ProjectDocument>;
+	let boards: Array<BoardItem>;
+	try {
+		before = await readProjectDocuments();
+		boards = (await eda.dmt_Board.getAllBoardsInfo()) ?? [];
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read project documents before PCB delete.');
+	}
+	const pcb = before.find(d => d.kind === 'pcb' && d.uuid === uuid);
+	if (!pcb) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `PCB "${uuid}" was not found; nothing was deleted.`);
+	if (pcb.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `PCB name mismatch: expected "${expectedName}", found "${pcb.name}".`);
+	const holder = boards.find(b => b?.pcb?.uuid === uuid)?.name ?? pcb.parentBoardName;
+	if (holder) {
+		throw new ActionError(
+			ErrorCodes.PRECONDITION_REFUSED,
+			`PCB "${pcb.name}" is bound to Board "${holder}"; refusing to delete a bound PCB. `
+			+ `Use board.delete to remove the Board with its documents, or board.delete keepDocuments=true to unbind first.`,
+		);
+	}
+	if (dryRun) return { result: { uuid, name: pcb.name, dryRun: true, wouldDelete: [pcb] } };
+
+	let ok;
+	try {
+		ok = await eda.dmt_Pcb.deletePcb(uuid);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to delete PCB "${pcb.name}".`);
+	}
+	const after = await documentsAfterDelete([uuid]);
+	if (!after) {
+		return {
+			result: { uuid, name: pcb.name, platformOk: ok, deleted: false, partial: true, verified: false },
+			warnings: ['deletePcb was sent but the project document list could not be read back; do not retry blindly.'],
+		};
+	}
+	if (after.some(d => d.uuid === uuid)) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `PCB "${pcb.name}" (${uuid}) is still listed after deletePcb (platform ok=${ok}); not deleted.`);
+	}
+	const alsoDeleted = before.filter(d => d.uuid !== uuid && !after.some(a => a.uuid === d.uuid));
+	return {
+		result: { uuid, name: pcb.name, platformOk: ok, deleted: true, verified: true, alsoDeleted },
+		warnings: alsoDeleted.length ? [`deletePcb also removed ${alsoDeleted.map(d => `${d.kind} "${d.name}"`).join(', ')} (reuse-module cascade).`] : undefined,
+	};
 };
 
 /**
@@ -15903,6 +16056,7 @@ const HANDLERS: Record<string, Handler> = {
 	'board.rename': boardRename,
 	'board.copy': boardCopy,
 	'board.delete': boardDelete,
+	'pcb.document.delete': pcbDocumentDelete,
 	'board.rebind': boardRebind,
 	'pcb.import_changes': pcbImportChanges,
 	'pcb.add_component': pcbAddComponent,

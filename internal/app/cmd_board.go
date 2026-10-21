@@ -126,20 +126,37 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// board.delete
 	{
 		var name string
+		var dryRun, keepDocuments bool
 		c := &cobra.Command{
-			Use:     "delete",
-			Short:   "Delete a Board by name (no undo)",
-			Args:    cobra.NoArgs,
-			Example: `  easyeda board delete --name "Board1"`,
+			Use:   "delete",
+			Short: "Delete a Board and the schematic + PCB documents it binds (no undo)",
+			Long: "Delete a Board by name together with its bound PCB and schematic (all pages).\n\n" +
+				"The platform's deleteBoard only removes the grouping, so the documents are\n" +
+				"deleted explicitly and the result is decided by a fresh project-document\n" +
+				"readback: deleted[] is what is proven gone, residual[] what is still listed\n" +
+				"(partial → non-zero exit). Run --dry-run first to see exactly which documents\n" +
+				"would go. --keep-documents only removes the binding.",
+			Args: cobra.NoArgs,
+			Example: `  easyeda board delete --name "Board1_1" --dry-run   # list the documents first
+  easyeda board delete --name "Board1_1"
+  easyeda board delete --name "Board1_1" --keep-documents   # unbind only`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if name == "" {
 					return fmt.Errorf("--name is required")
 				}
-				return dispatch(cfg, "board.delete", window,
-					map[string]any{"name": name}, stdout, stderr)
+				payload := map[string]any{"name": name}
+				if dryRun {
+					payload["dryRun"] = true
+				}
+				if keepDocuments {
+					payload["keepDocuments"] = true
+				}
+				return dispatch(cfg, "board.delete", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&name, "name", "", "board name to delete (required)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "list the documents that would be deleted; change nothing")
+		c.Flags().BoolVar(&keepDocuments, "keep-documents", false, "only remove the Board binding; keep its PCB and schematic")
 		board.AddCommand(c)
 	}
 

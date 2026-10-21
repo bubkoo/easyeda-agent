@@ -563,6 +563,40 @@ response-shape failures preserve the original response instead of a flat report.
 		},
 	})
 
+	// ── doc-delete ────────────────────────────────────────────────────────
+	// pcb.document.delete
+	{
+		var uuid, expectedName string
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "doc-delete",
+			Short: "Delete one exact, unbound PCB document and verify it is gone (no undo)",
+			Long: "Delete one PCB document after a UUID + --expected-name preflight against the\n" +
+				"project's PCB list. A PCB still bound to a Board is refused: use\n" +
+				"'easyeda board delete' (Board + its documents) or 'board delete --keep-documents'\n" +
+				"to unbind first. Success requires the PCB to be absent from a fresh readback;\n" +
+				"other documents removed with it (reuse-module cascade) are reported in alsoDeleted.",
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb docs                                              # find uuid + name
+  easyeda pcb doc-delete --uuid <pcbUuid> --expected-name PCB1_1 --dry-run
+  easyeda pcb doc-delete --uuid <pcbUuid> --expected-name PCB1_1`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if uuid == "" || expectedName == "" {
+					return fmt.Errorf("--uuid and --expected-name are required")
+				}
+				payload := map[string]any{"uuid": uuid, "expectedName": expectedName}
+				if dryRun {
+					payload["dryRun"] = true
+				}
+				return dispatch(cfg, "pcb.document.delete", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&uuid, "uuid", "", "PCB document UUID (required)")
+		c.Flags().StringVar(&expectedName, "expected-name", "", "exact current PCB name safety check (required)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "preflight only; delete nothing")
+		pcb.AddCommand(c)
+	}
+
 	// ── new-board ─────────────────────────────────────────────────────────
 	// board.new_pcb — create a NEW board (板) with a fresh PCB page from a schematic.
 	{

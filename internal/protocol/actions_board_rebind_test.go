@@ -24,3 +24,21 @@ func TestBoardRebindRegistered(t *testing.T) {
 	}
 	t.Fatal("AllActions() is missing board.rebind — the daemon will reject `easyeda board rebind` with UNKNOWN_ACTION")
 }
+
+// Document deletes are destructive and project-level: confirm-gated mutations
+// that stay off PCB-window routing (DomainBoard, not DomainPcb).
+func TestDocumentDeleteActionsAreConfirmGated(t *testing.T) {
+	found := map[string]ActionSpec{}
+	for _, a := range AllActions() {
+		found[a.Name] = a
+	}
+	for _, name := range []string{"board.delete", "pcb.document.delete"} {
+		a, ok := found[name]
+		if !ok {
+			t.Fatalf("AllActions() is missing %s — the daemon would reject it with UNKNOWN_ACTION", name)
+		}
+		if !a.Mutates || !a.NeedsConfirm || !a.NeedsWindow || a.Domain != DomainBoard {
+			t.Errorf("%s: mutates=%v needsConfirm=%v needsWindow=%v domain=%q", name, a.Mutates, a.NeedsConfirm, a.NeedsWindow, a.Domain)
+		}
+	}
+}

@@ -826,6 +826,20 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"pcbs[].uuid", "pcbs[].name", "pcbs[].parentProjectUuid", "count"},
 		},
 		{
+			// Project document management (dmt_Pcb), not a canvas edit: DomainBoard
+			// keeps it off PCB-window routing and the PCB stale-read guard.
+			Name:         "pcb.document.delete",
+			Domain:       DomainBoard,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Delete one exact PCB document (无 undo) after UUID+expectedName preflight against the project PCB list, then verify by fresh readback that it is no longer listed. A PCB still bound to a Board is refused before mutation — use board.delete (removes the Board with its documents) or board.delete keepDocuments=true to unbind first. dryRun returns the preflighted document without deleting. dmt_Pcb.deletePcb also removes the schematic of a reuse-module (复用模块) PCB; any other document that disappeared is reported in alsoDeleted.",
+			Inputs:       []string{"uuid", "expectedName", "dryRun optional"},
+			Outputs:      []string{"uuid", "name", "platformOk", "deleted", "verified", "alsoDeleted[]", "wouldDelete (dryRun)"},
+			VerifyWith:   []string{"pcb.documents.list"},
+		},
+		{
 			Name:        "pcb.components.list",
 			Domain:      DomainPcb,
 			Phase:       2,
@@ -1186,9 +1200,10 @@ func AllActions() []ActionSpec {
 			Mutates:      true,
 			NeedsWindow:  true,
 			NeedsConfirm: true,
-			Description:  "Delete a Board by name (无 undo). Removes the schematic↔PCB grouping and its documents.",
-			Inputs:       []string{"name"},
-			Outputs:      []string{"ok"},
+			Description:  "Delete a Board by name AND the schematic + PCB documents it binds (无 undo). dmt_Board.deleteBoard alone only removes the grouping, so the bound PCB (deletePcb) and schematic (deleteSchematic, all its pages) are deleted explicitly after the binding is gone. Refuses an unknown name before mutation. dryRun lists the documents that would be deleted without touching anything; keepDocuments=true only removes the binding and reports the documents as residual. Success is decided by a fresh project-document readback, not the platform booleans: a document still listed after delete is returned in residual with partial=true (no throw once the Board is gone).",
+			Inputs:       []string{"name", "dryRun optional", "keepDocuments optional (unbind only)"},
+			Outputs:      []string{"name", "documents[] {kind,uuid,name} (planned)", "wouldDelete (dryRun)", "boardDeleted", "deleted[]", "residual[]", "partial", "verified"},
+			VerifyWith:   []string{"board.list", "pcb.documents.list", "schematic.pages.list"},
 		},
 		{
 			Name:        "board.rebind",

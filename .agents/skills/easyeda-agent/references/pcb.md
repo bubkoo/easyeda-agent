@@ -95,6 +95,7 @@ STEP 仅能包含从 STEP 导入的元件模型。导出后独立核对板体、
 ### Navigation
 
 - `pcb.documents.list` — all PCB documents in the project (uuid + name); pair with `document.open`.
+- `pcb.document.delete` — delete one **unbound** PCB document (**confirm** — no undo) after an exact `--uuid` + `--expected-name` preflight; a PCB still bound to a Board is refused (use `board.delete`, or `board delete --keep-documents` to unbind first). Verified by a fresh readback that it is no longer listed; documents removed with a reuse-module PCB are reported in `alsoDeleted`. CLI: `easyeda pcb doc-delete --uuid <pcbUuid> --expected-name <name> [--dry-run]`.
 - `document.open` — open any document (schematic page or PCB) by uuid; the cross-type switch entry. `doc open/switch`
   now require both active-UUID match and a settled object inventory; a tab ID or URL change with unreadable objects returns
   failure instead of a false success.
@@ -116,7 +117,7 @@ uuid. CLI: `easyeda board …`. Maps to `eda.dmt_Board.*`.
 - `easyeda pcb new-board` (`board.new_pcb`) — new board + fresh empty PCB page bound to a schematic. **A schematic belongs to only ONE board**, so this refuses if the target schematic is already bound (it would MOVE it out, orphaning the old board's PCB — the "原理图没了" trap). Work inside the existing board instead; pass `--force` only to move it deliberately.
 - `board.rename` — rename a board (`--name` → `--new`).
 - `board.copy` — duplicate a board (its schematic + PCB).
-- `board.delete` — delete a board by name (**confirm** — no undo).
+- `board.delete` — delete a board by name **together with its bound PCB and schematic (all pages)** (**confirm** — no undo). The platform's `deleteBoard` only unbinds, so the documents are deleted explicitly; run `--dry-run` first to list them. The result is decided by a fresh document readback: `deleted[]` is proven gone, `residual[]` is still listed (`partial` → non-zero exit; inspect before retrying). `--keep-documents` only removes the binding.
 
 ### View (canvas — shared with the schematic editor)
 
