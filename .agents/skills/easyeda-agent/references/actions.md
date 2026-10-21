@@ -223,7 +223,7 @@ EasyEDA 交互界面兜底。能力边界与未来 typed 验收见 [project-impo
   [pcb-config.md](pcb-config.md)。`get` 导出可交给 `pcb drc-rules-set --from` 完整恢复。
 
 - `pcb.documents.list` — 工程内所有 PCB 文档（uuid + name）
-- `pcb.document.delete` — 删除一份**未绑定**的 PCB 文档（**需确认**，无 undo）：按精确 `--uuid` + `--expected-name` 预检，仍被 Board 绑定则拒绝（改用 `board.delete`，或 `--keep-documents` 先解绑），删后回读确认不再列出；复用模块 PCB 连带删除的文档列在 `alsoDeleted`。CLI：`easyeda pcb doc-delete --uuid <pcbUuid> --expected-name <名称> [--dry-run]`
+- `pcb.document.delete` — 删除一份**未绑定**的 PCB 文档（**需确认**，无 undo）：按精确 `--uuid` + `--expected-name` 预检，仍被 Board 绑定则拒绝（改用 `board.delete`，或 `--keep-documents` 先解绑），删后回读确认不再列出；复用模块 PCB 连带删除的文档列在 `alsoDeleted`。CLI：`easyeda pcb doc-delete --uuid <pcbUuid> --expected-name <名称> [--dry-run] [--no-tree-refresh]`；工程树刷新同 `board.delete`。
 - `pcb.components.list` — PCB 上的封装/器件；`includePads:true` 回传 pad 的原始
   `shape` / `rotation` / `specialPad`，支持形状另带旋转后 bbox `width/height`
 - `pcb.line.list` — 铜线与圆弧；`arcsAvailable:true` 才能证明空 `arcs` 确实表示没有圆弧
@@ -296,7 +296,7 @@ EasyEDA 交互界面兜底。能力边界与未来 typed 验收见 [project-impo
 - `board.create` — 把原理图和/或 PCB 绑成新组合（`--schematic` / `--pcb`）；游离 PCB 在 `import_changes` 前的修复手段
 - `board.rename` — 重命名组合（`--name` → `--new`）
 - `board.copy` — 复制组合（连同原理图 + PCB）
-- `board.delete` — 删除组合**及其绑定的 PCB 与原理图（全部图页）**（**需确认**，无 undo）。平台 `deleteBoard` 只解绑，文档由 `deletePcb` / `deleteSchematic` 显式删除；先 `--dry-run` 列出将删文档，结果以新回读为准：`deleted[]` 已证实消失，`residual[]` 仍在（`partial` → 非零退出，先查再重试）。`--keep-documents` 只解绑。
+- `board.delete` — 删除组合**及其绑定的 PCB 与原理图（全部图页）**（**需确认**，无 undo）。平台 `deleteBoard` 只解绑，文档由 `deletePcb` / `deleteSchematic` 显式删除；先 `--dry-run` 列出将删文档，结果以新回读为准：`deleted[]` 已证实消失，`residual[]` 仍在（`partial` → 非零退出，先查再重试）。`--keep-documents` 只解绑。删除经回读验证后，CLI 会刷新官方工程树：SDK 没有工程树刷新接口，所以保存当前前台文档 → **重载整个 Web 编辑器页面** → 恢复原前台文档并回读核对（同 `easyeda web reload`），会打断正在看编辑器的人，其他打开的文档须已保存。结果附 `treeRefreshed` / `treeRefresh`，刷新失败单独报告、不把删除判为失败；dry-run、`--keep-documents`、partial 不刷新，`--no-tree-refresh` 关闭。
 
 
 ## PCB 属性同步（现有契约）

@@ -126,7 +126,7 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// board.delete
 	{
 		var name string
-		var dryRun, keepDocuments bool
+		var dryRun, keepDocuments, noTreeRefresh bool
 		c := &cobra.Command{
 			Use:   "delete",
 			Short: "Delete a Board and the schematic + PCB documents it binds (no undo)",
@@ -135,7 +135,14 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				"deleted explicitly and the result is decided by a fresh project-document\n" +
 				"readback: deleted[] is what is proven gone, residual[] what is still listed\n" +
 				"(partial → non-zero exit). Run --dry-run first to see exactly which documents\n" +
-				"would go. --keep-documents only removes the binding.",
+				"would go. --keep-documents only removes the binding.\n\n" +
+				"The official project tree keeps showing deleted documents until the Web page\n" +
+				"reloads (the SDK has no tree refresh), so a verified delete then saves the\n" +
+				"active document, reloads the WHOLE editor page and restores that document —\n" +
+				"this interrupts whoever is looking at the editor, and other open documents\n" +
+				"must already be saved. The outcome is reported as treeRefreshed/treeRefresh;\n" +
+				"a failed refresh never turns the verified delete into a failure.\n" +
+				"--no-tree-refresh skips it (then `easyeda web reload` refreshes later).",
 			Args: cobra.NoArgs,
 			Example: `  easyeda board delete --name "Board1_1" --dry-run   # list the documents first
   easyeda board delete --name "Board1_1"
@@ -151,12 +158,13 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				if keepDocuments {
 					payload["keepDocuments"] = true
 				}
-				return dispatch(cfg, "board.delete", window, payload, stdout, stderr)
+				return dispatchDocumentDelete(cfg, "board.delete", window, payload, !noTreeRefresh, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&name, "name", "", "board name to delete (required)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "list the documents that would be deleted; change nothing")
 		c.Flags().BoolVar(&keepDocuments, "keep-documents", false, "only remove the Board binding; keep its PCB and schematic")
+		c.Flags().BoolVar(&noTreeRefresh, "no-tree-refresh", false, "do not reload the Web page to refresh the project tree after the delete")
 		board.AddCommand(c)
 	}
 

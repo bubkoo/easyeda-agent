@@ -187,8 +187,8 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `board.create` | Bind a schematic and/or PCB into a new board. Fixes a floating PCB before `import_changes`. Mutates. |
 | `board.rename` | Rename a board by its current name. Mutates. |
 | `board.copy` | Duplicate a board (schematic + PCB). Mutates. |
-| `board.delete` | Delete a board by name together with its bound PCB + schematic (confirmation-gated, no undo). `--dry-run` lists the documents first; `deleted[]`/`residual[]` come from a fresh document readback; `--keep-documents` only unbinds. Mutates. |
-| `pcb.document.delete` | Delete one unbound PCB document after exact uuid + expected-name preflight; refuses a Board-bound PCB; verified absent by readback (`easyeda pcb doc-delete`). Mutates. |
+| `board.delete` | Delete a board by name together with its bound PCB + schematic (confirmation-gated, no undo). `--dry-run` lists the documents first; `deleted[]`/`residual[]` come from a fresh document readback; `--keep-documents` only unbinds. The CLI then refreshes the official project tree by save → full Web page reload → restore active document (`treeRefreshed`; `--no-tree-refresh` skips). Mutates. |
+| `pcb.document.delete` | Delete one unbound PCB document after exact uuid + expected-name preflight; refuses a Board-bound PCB; verified absent by readback (`easyeda pcb doc-delete`), then the same project-tree refresh. Mutates. |
 | `board.rebind` | Repair a stale/orphaned board binding after a PCB rebuild: delete the board (by `--name`, else current) and re-create it bound to `--schematic` (+ `--pcb`), rolling back on failure. Clears the false DRC Netlist Error left when the binding points at a deleted schematic UUID. `--force` moves a schematic already bound elsewhere. Mutates. |
 
 ### Draw / edit (11 actions, all mutate)

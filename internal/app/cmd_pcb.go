@@ -567,7 +567,7 @@ response-shape failures preserve the original response instead of a flat report.
 	// pcb.document.delete
 	{
 		var uuid, expectedName string
-		var dryRun bool
+		var dryRun, noTreeRefresh bool
 		c := &cobra.Command{
 			Use:   "doc-delete",
 			Short: "Delete one exact, unbound PCB document and verify it is gone (no undo)",
@@ -575,7 +575,12 @@ response-shape failures preserve the original response instead of a flat report.
 				"project's PCB list. A PCB still bound to a Board is refused: use\n" +
 				"'easyeda board delete' (Board + its documents) or 'board delete --keep-documents'\n" +
 				"to unbind first. Success requires the PCB to be absent from a fresh readback;\n" +
-				"other documents removed with it (reuse-module cascade) are reported in alsoDeleted.",
+				"other documents removed with it (reuse-module cascade) are reported in alsoDeleted.\n\n" +
+				"A verified delete then refreshes the official project tree by saving the active\n" +
+				"document, reloading the WHOLE Web editor page and restoring that document (the\n" +
+				"SDK has no tree refresh). It interrupts the editor; other open documents must\n" +
+				"already be saved. Reported as treeRefreshed/treeRefresh — a failed refresh does\n" +
+				"not fail the delete. --no-tree-refresh skips it.",
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb docs                                              # find uuid + name
   easyeda pcb doc-delete --uuid <pcbUuid> --expected-name PCB1_1 --dry-run
@@ -588,12 +593,13 @@ response-shape failures preserve the original response instead of a flat report.
 				if dryRun {
 					payload["dryRun"] = true
 				}
-				return dispatch(cfg, "pcb.document.delete", window, payload, stdout, stderr)
+				return dispatchDocumentDelete(cfg, "pcb.document.delete", window, payload, !noTreeRefresh, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&uuid, "uuid", "", "PCB document UUID (required)")
 		c.Flags().StringVar(&expectedName, "expected-name", "", "exact current PCB name safety check (required)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "preflight only; delete nothing")
+		c.Flags().BoolVar(&noTreeRefresh, "no-tree-refresh", false, "do not reload the Web page to refresh the project tree after the delete")
 		pcb.AddCommand(c)
 	}
 

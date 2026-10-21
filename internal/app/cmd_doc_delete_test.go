@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -67,5 +69,83 @@ func TestPcbDocDelete_RequiresUUIDAndExpectedName(t *testing.T) {
 	if cap.action != "pcb.document.delete" || cap.payload["uuid"] != "c0d8d3b9d38f5d76" ||
 		cap.payload["expectedName"] != "PCB1_1" || cap.payload["dryRun"] != true {
 		t.Fatalf("got action=%q payload=%v", cap.action, cap.payload)
+	}
+}
+
+func stubTreeRefresh(t *testing.T, err error) *int {
+	t.Helper()
+	calls := 0
+	old := refreshProjectTree
+	refreshProjectTree = func(*appConfig, string) (map[string]any, error) {
+		calls++
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"reloaded": true, "documentUuid": "44a50c47650bccd0"}, nil
+	}
+	t.Cleanup(func() { refreshProjectTree = old })
+	return &calls
+}
+
+func runDeleteWithRefresh(t *testing.T, action, result string, payload map[string]any, refresh bool) (map[string]any, error) {
+	t.Helper()
+	cfg, _, cleanup := newAutolayoutTestDaemon(t, func(int, autolayoutTestCall) string {
+		return `{"ok":true,"result":` + result + `}`
+	})
+	defer cleanup()
+	var out, stderr bytes.Buffer
+	err := dispatchDocumentDelete(cfg, action, "", payload, refresh, &out, &stderr)
+	var envelope struct {
+		Result map[string]any `json:"result"`
+	}
+	if jerr := json.Unmarshal(out.Bytes(), &envelope); jerr != nil {
+		t.Fatalf("stdout is not one JSON envelope: %v\n%s", jerr, out.String())
+	}
+	return envelope.Result, err
+}
+
+// A verified delete reloads the page once and reports it; a failed reload is
+// reported separately and leaves the verified delete successful.
+func TestDocumentDelete_RefreshesTreeOnlyAfterVerifiedDelete(t *testing.T) {
+	verified := `{"uuid":"c0d8d3b9d38f5d76","deleted":true,"verified":true,"alsoDeleted":[]}`
+	for _, action := range []string{"board.delete", "pcb.document.delete"} {
+		calls := stubTreeRefresh(t, nil)
+		res, err := runDeleteWithRefresh(t, action, verified, map[string]any{"uuid": "x"}, true)
+		if err != nil || *calls != 1 || res["treeRefreshed"] != true || res["deleted"] != true {
+			t.Fatalf("%s: err=%v calls=%d result=%v", action, err, *calls, res)
+		}
+
+		calls = stubTreeRefresh(t, errors.New("save refused"))
+		res, err = runDeleteWithRefresh(t, action, verified, map[string]any{"uuid": "x"}, true)
+		report, _ := res["treeRefresh"].(map[string]any)
+		if err != nil || *calls != 1 || res["treeRefreshed"] != false || report["error"] != "save refused" {
+			t.Fatalf("%s refresh failure: err=%v calls=%d result=%v", action, err, *calls, res)
+		}
+
+		calls = stubTreeRefresh(t, nil)
+		res, err = runDeleteWithRefresh(t, action, verified, map[string]any{"uuid": "x"}, false)
+		report, _ = res["treeRefresh"].(map[string]any)
+		if err != nil || *calls != 0 || res["treeRefreshed"] != false || report["skipped"] == nil {
+			t.Fatalf("%s --no-tree-refresh: err=%v calls=%d result=%v", action, err, *calls, res)
+		}
+	}
+}
+
+// Dry runs, unbind-only and partial deletes never reload the editor.
+func TestDocumentDelete_NoRefreshForDryRunKeepOrPartial(t *testing.T) {
+	for _, tc := range []struct {
+		name, result string
+		payload      map[string]any
+		wantErr      bool
+	}{
+		{"dry-run", `{"dryRun":true,"wouldDelete":[]}`, map[string]any{"dryRun": true}, false},
+		{"keep-documents", `{"boardDeleted":true,"verified":true}`, map[string]any{"keepDocuments": true}, false},
+		{"partial", `{"boardDeleted":true,"partial":true,"verified":false}`, map[string]any{}, true},
+	} {
+		calls := stubTreeRefresh(t, nil)
+		res, err := runDeleteWithRefresh(t, "board.delete", tc.result, tc.payload, true)
+		if (err != nil) != tc.wantErr || *calls != 0 || res["treeRefresh"] != nil {
+			t.Fatalf("%s: err=%v calls=%d result=%v", tc.name, err, *calls, res)
+		}
 	}
 }

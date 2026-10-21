@@ -4,6 +4,7 @@
 
 - `board.delete` 现在真正删除组合绑定的 PCB 与原理图（全部图页）：平台 `deleteBoard` 只解绑，2026-10-21 ceshi 实测删后 PCB 与原理图页都还在。解绑后用 `deletePcb` / `deleteSchematic` 显式删除，结果按新的文档回读报告 `deleted[]` 与 `residual[]`，有残留即 `partial`、CLI 非零退出；`--dry-run` 先列出将删文档，`--keep-documents` 保留旧的只解绑行为。
 - 新增 `pcb.document.delete`（`easyeda pcb doc-delete --uuid --expected-name`）：删除一份未绑定的 PCB 文档，按精确 UUID + 名称预检，拒绝仍被 Board 绑定的 PCB，删后回读确认不再列出；复用模块 PCB 连带删掉的文档报告在 `alsoDeleted`。
+- `easyeda board delete` / `pcb doc-delete` 删除验证通过后刷新官方工程树：官方 SDK 没有刷新工程树的接口，删掉的文档在重载页面前一直挂在左侧树上。现在保存前台文档 → 重载整个 Web 页面 → 恢复原前台文档并回读，结果报告 `treeRefreshed` / `treeRefresh`；刷新失败单独报告、不把删除判失败；dry-run、`--keep-documents`、partial 不刷新，`--no-tree-refresh` 可关闭。
 - 原理图网表导出（`sch list --include-pins` 等读引脚网络的命令）后，连接器要求宿主连续空闲 150 ms 才返回（#256/#257）：宿主在导出 promise 完成后 7–21 ms 才启动 RealTimeSync，原先只采样一次空闲就返回，紧随其后的 `sch modify` 会被拒（cmdKey），`no-connect --clear` 会不生效。Web 4.1.78 前台实测：读引脚后立刻 modify 由 7/80 失败降到 0/40，立刻清 NC 由 19/35 降到 0/20；读引脚的代价约增加 0.2 秒。
 - `pcb rip-up` 的过孔范围排除封装内嵌过孔（QFN 散热焊盘），与 `pcb clear` 一致；此前整板 rip-up 会把它们放进删除批次。
 - `pcb check` via-in-pad 改按焊盘真实矩形判定过孔铜是否压上焊盘：此前把焊盘当成以最长半边为半径的圆，距 SOIC 长焊盘 12.5 mil 的 dog-bone 过孔也被报。
