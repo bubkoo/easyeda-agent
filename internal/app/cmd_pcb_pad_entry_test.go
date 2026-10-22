@@ -194,7 +194,7 @@ func TestPlanTeardropsStopBeforeJunction(t *testing.T) {
 	_ = skips
 }
 
-// 全部为合成 mil 几何，覆盖规划契约，不代表宿主现场验证。
+// Synthetic mil geometry covering the planning contract; not live host evidence.
 func teardropEditFixture() ([]peTrack, []pePad, []peLine) {
 	pads := []pePad{{Ref: "C1.1", Net: "N", Layer: 1, W: 20, H: 24, Kind: "RECT"}}
 	tracks := []peTrack{{ID: "main", Net: "N", Layer: 1, X2: 100, W: 8}}
@@ -242,7 +242,7 @@ func TestTeardropRemovalsFailClosed(t *testing.T) {
 
 func TestModifyTeardropsOnlyRebuildsOldTargets(t *testing.T) {
 	ts, ps, old := teardropEditFixture()
-	// 别的入口虽可生成泪滴，也不得夹带到修改计划。
+	// Another entry could get a teardrop, but must not leak into the modify plan.
 	ts = append(ts, peTrack{ID: "unrelated", Net: "U", Layer: 2, X1: 200, Y1: 200, X2: 300, Y2: 200, W: 8})
 	ps = append(ps, pePad{Ref: "C2.1", Net: "U", Layer: 2, X: 200, Y: 200, W: 20, H: 24, Kind: "RECT"})
 	ids, ls, err := modifyTeardrops(ts, ps, nil, old, 6.5, 0.8, 0.8)
@@ -254,7 +254,7 @@ func TestModifyTeardropsOnlyRebuildsOldTargets(t *testing.T) {
 			t.Fatalf("not resized: %+v", ls)
 		}
 	}
-	// 修改后的计划仍能匹配删除，主走线保留。
+	// The modified plan can itself be deleted, keeping the main track.
 	updated := []peTrack{ts[0]}
 	for i, l := range ls {
 		updated = append(updated, peTrack{ID: fmt.Sprintf("new%d", i), Net: l.Net, Layer: l.Layer, W: l.Width, X1: l.From[0], Y1: l.From[1], X2: l.To[0], Y2: l.To[1]})
@@ -262,7 +262,7 @@ func TestModifyTeardropsOnlyRebuildsOldTargets(t *testing.T) {
 	if ids, err := teardropRemovals(updated, ls); err != nil || len(ids) != 2 {
 		t.Fatalf("delete modified: %v %v", ids, err)
 	}
-	// 比例不是对上一轮几何累乘。
+	// Scales apply to the default geometry, not cumulatively to the last run.
 	_, again, err := modifyTeardrops(updated, ps, nil, ls, 6.5, 0.8, 0.8)
 	if err != nil || !reflect.DeepEqual(again, ls) {
 		t.Fatalf("repeat drift: %+v %v", again, err)
@@ -357,7 +357,7 @@ func TestTeardropEditCommands(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			// 重跑不能覆盖已存在的审计文件。
+			// A re-run must not overwrite the existing audit files.
 			cmd = newPcbTeardropEditCmd(io.Discard, modify)
 			cmd.SetArgs(args)
 			if err = cmd.Execute(); err == nil {
@@ -370,11 +370,15 @@ func TestTeardropEditCommands(t *testing.T) {
 func TestTeardropEditCommandFailureLeavesNoPlaybook(t *testing.T) {
 	dir, board, plan := writeTeardropFixtureFiles(t)
 	out := filepath.Join(dir, "next.json")
-	raw, _ := os.ReadFile(board)
-	raw = []byte(strings.Replace(string(raw), `"locked": false`, `"locked": true`, 1))
-	// 锁主走线不应影响删除；明确锁定泪滴。
+	raw, err := os.ReadFile(board)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var b boardSnapshot
-	_ = json.Unmarshal(raw, &b)
+	if err = json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	// Lines[0] is the main track; lock one teardrop line instead.
 	b.Copper.Lines[1].(map[string]any)["locked"] = true
 	if err := peWrite(board, b); err != nil {
 		t.Fatal(err)
@@ -434,7 +438,7 @@ func TestModifyTeardropsRejectsCollapsedBaseAndParentWidthDrift(t *testing.T) {
 
 func TestModifyTeardropsAfterHostSplitsMainAndTeardrop(t *testing.T) {
 	ts, ps, ls := teardropEditFixture()
-	// 模拟主走线在两个尖端拆段，泪滴边线也被宿主拆成连续碎段。
+	// The host splits the main track at both tips and one teardrop line into pieces.
 	ts = ts[1:]
 	joints := []float64{0, ls[1].To[0], ls[0].To[0], 100}
 	for i := 0; i < len(joints)-1; i++ {
@@ -452,6 +456,22 @@ func TestModifyTeardropsAfterHostSplitsMainAndTeardrop(t *testing.T) {
 	for _, id := range ids {
 		if strings.HasPrefix(id, "main") {
 			t.Fatal("deleted parent", id)
+		}
+	}
+}
+
+func TestTeardropClearanceUsesEitherRule(t *testing.T) {
+	for _, tc := range []struct {
+		rules *boardRules
+		want  float64
+	}{
+		{nil, 6.5},
+		{&boardRules{}, 6.5},
+		{&boardRules{ClearanceMil: 8}, 8.5},
+		{&boardRules{ClearanceMil: 6, ClearanceTrackTrackMil: 7}, 7.5},
+	} {
+		if got := teardropClearance(&boardSnapshot{Rules: tc.rules}, 6.5); got != tc.want {
+			t.Fatalf("%+v: got %v want %v", tc.rules, got, tc.want)
 		}
 	}
 }

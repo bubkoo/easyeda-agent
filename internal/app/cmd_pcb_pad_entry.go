@@ -498,8 +498,10 @@ func padEntries(tracks []peTrack, p pePad, layer int) int {
 	return n
 }
 
-// teardropRemovals 要求每条旧线被新回读中的同网、同层、同宽碎段完整且唯一覆盖。
-// 容差采用固定 mil 值，不能随线长扩大；锁定/缺段/重叠均拒绝整个计划。
+// teardropRemovals requires every planned line to be covered exactly once, end
+// to end, by same-net, same-layer, same-width pieces of a fresh readback. The
+// tolerance is a fixed mil value (it must not grow with line length); a locked,
+// missing or overlapping piece rejects the whole plan.
 func teardropRemovals(tracks []peTrack, planned []peLine) ([]string, error) {
 	const eps = 0.05
 	seen := map[string]bool{}
@@ -556,6 +558,18 @@ func teardropRemovals(tracks []peTrack, planned []peLine) ([]string, error) {
 	}
 	sort.Strings(ids)
 	return ids, nil
+}
+
+// teardropClearance is the board's rule clearance + 0.5 mil, or fallback when the
+// dump carries no rules; planning and modification must use the same value.
+func teardropClearance(b *boardSnapshot, fallback float64) float64 {
+	if b.Rules == nil {
+		return fallback
+	}
+	if c := math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil); c > 0 {
+		return c + 0.5
+	}
+	return fallback
 }
 
 func peFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
@@ -659,7 +673,8 @@ func modifyTeardrops(tracks []peTrack, pads []pePad, vias []peVia, previous []pe
 	return ids, lines, nil
 }
 
-// 不允许输出覆盖输入或已有文件，防止丢失可追溯的旧计划，或误用上次留下的剧本。
+// teardropOutputPaths refuses to overwrite an input or any existing file, so the
+// old plan stays traceable and a stale playbook is never mistaken for a new one.
 func teardropOutputPaths(out string, inputs ...string) (string, error) {
 	playbook := strings.TrimSuffix(out, ".json") + ".playbook.json"
 	for _, name := range []string{out, playbook} {
@@ -727,8 +742,8 @@ length-scale > 0，base-scale 在 (0,1]；长度仍受走线空间限制，底�
 				if b.Copper.Availability["vias"] != "available" || b.ComponentsAvailability != "available" {
 					return fmt.Errorf("modification requires available vias and components in a fresh dump")
 				}
-				if !cmd.Flags().Changed("clearance") && b.Rules != nil && math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil) > 0 {
-					clr = math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil) + 0.5
+				if !cmd.Flags().Changed("clearance") {
+					clr = teardropClearance(b, clr)
 				}
 				ids, lines, err = modifyTeardrops(tracks, pads, vias, prev, clr, lengthScale, baseScale)
 			} else {
@@ -885,8 +900,8 @@ playbook deleting that plan's lines (and the pieces the host split them into).`,
 			if err != nil {
 				return err
 			}
-			if !cmd.Flags().Changed("clearance") && b.Rules != nil && b.Rules.ClearanceTrackTrackMil > 0 {
-				clr = math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil) + 0.5
+			if !cmd.Flags().Changed("clearance") {
+				clr = teardropClearance(b, clr)
 			}
 			ex := map[string]bool{}
 			for _, n := range excludeNets {

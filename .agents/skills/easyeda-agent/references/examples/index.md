@@ -25,6 +25,7 @@
 | [关键网络规划与现场迭代](260919-at32f415/critical-routing.md) | 晶振与 CAN 的 topology-aware 计划，以及用真实飞线/绕行反例修正布局 | `partial-live-verified`；晶振次序与 CAN 第一轮负例已现场回读，关键铜仍未写入 |
 | [模块候选 Layout](260919-at32f415/layout-candidates.md) | LED 板边、MCU 逐脚去耦、LDO 刚体变换；AI 定关系、算法生成多个完整坐标候选 | `offline-verified`；LED/MCU 待本轮 typed Apply、保存重开回读后升级 |
 | [LDO 原理图、布局与回流](260919-at32f415/ldo-placement.md) | AMS1117 双 VOUT/TAB、输入输出电容顺序、顶层 GND 回流 | `partial-live-verified`；局部放置与15段铜已验证，整板主干待完成 |
+| [线条形泪滴的修改与删除](teardrop-maintenance/README.md) | 两颗 R0805 + 10 mil 主走线：创建 → 按比例修改 → 删除，宿主切分主干后仍完整匹配 | `live-verified` 仅矩形焊盘双端入口；边线切分、圆焊盘与拒绝分支只有自动回归 |
 | [晶振负载电容摆位](esp32s3r8-crystal/README.md) | 负载电容夹在芯片振荡脚与晶振之间；layout-plan owner 写法、对角焊盘晶振的对称判读、密板守护环取舍 | `live-verified` 仅摆位几何；XTAL 走线与包地未写入 |
 | [板框、安装孔与固定器件](260919-at32f415/fixed-mechanics.md) | 固定尺寸题、坐标原点、圆角、锁定、固定/半固定器件 | `live-verified`；保存后对象回读保持；typed 重载修复仍需复测 |
 | [模拟题与 7 套练习差异](exam-differences.md) | DCDC、Near pin、开尔文、传感器开槽、RF 净空等迁移题 | `source-only`，不是黄金答案 |

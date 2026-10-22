@@ -273,28 +273,14 @@ PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令�
   （RF 馈线、晶振）。宿主会在尖端把原走线拆段，维护时必须保留原计划并取得新回读。
   `pcb check` 识别成对泪滴，不算锐角/非 45°。之后 pour-rebuild → save → reload → DRC。
 - `pcb teardrop-delete-plan --board <新回读.json> --from <旧计划.json> --out <删除计划.json>`：
-  只生成删除旧计划线条的剧本，兼容 `teardrop-plan --remove-from`。按网络、层、线宽和几何核对连续碎段；
+  只生成删除旧计划线条的剧本；`teardrop-plan --remove-from` 走同一套检查，因此锁定线不再跳过而是报错，`--out` 也不得已存在。按网络、层、线宽和几何核对连续碎段；
   锁定、缺段、重复覆盖或漂移报错，不输出部分删除。几何匹配不证明对象来源，勿把别的板的计划用于当前板。
 - `pcb teardrop-modify-plan --board <新回读.json> --from <旧计划.json> --length-scale 0.8 --base-scale 0.8 --out <新计划.json>`：
   只修改旧计划覆盖的入口，比例相对于当前焊盘/主走线推导的默认几何（非反复累乘），保持线宽；
   长度受可用走线、接缝和交汇限制，底边受焊盘轮廓、半张角和间距限制。任一目标无法重建则拒绝整个计划。
   输出仍含 `lines`，可作为下一次维护的 `--from`；禁止覆盖输入计划或回读。执行配套 `.playbook.json` 前确认板未变化，
   之后重铺铜 → 保存 → 重载 → 新回读 → DRC。剧本不是原子事务，中途失败先回读核对，不能盲目重放。
-  删除/修改维护流程在 Web 4.1.78、Connector 1.14.2 上完成下述定向 `live-verified`；不代表整板 E2E 或原生泪滴通过。
-
-  **可复现的最小现场样例（单位 mil）**：从新建空白测试工程开始，通过官方库解析 C17414 / R0805，
-  放置 R1=(400,400)、R2=(800,400)，均为 TOP、0°；实测焊盘 44.6×54.2、中心相对器件 x=±39.4。
-  原理图与 PCB 均使用 R1.1=`TEST_A`、R1.2=R2.1=`TEST_LINK`、R2.2=`TEST_B`，赋予对应器件相同且唯一的
-  `uniqueId`，运行 `pcb import-changes`（不启用 `--sync-attrs`）对齐网表。仅在 PCB 加器件而原理图为空时，
-  DRC 会报 Netlist Error；必须补齐原理图、保存并同步，不能关闭该规则。
-  板框为 (200,200)–(1000,600)，10 mil 主走线连接实测焊盘中心 (439.4,400)–(760.6,400)。
-  基线保存重载后 DRC 为 `passed:true`、0 项；从 fresh dump 运行 `teardrop-plan` 得到两处/四条泪滴线，
-  apply 后重铺铜、保存重载、新回读和 DRC；以该计划运行 `teardrop-modify-plan --length-scale 0.8 --base-scale 0.8`，
-  再以修改计划运行 `teardrop-delete-plan`，每阶段均执行同一验收链。
-  实测修改删除四条旧线并创建四条新线，删除阶段清除全部四条新线；每次重载后 DRC 均为 `passed:true`、0 项。
-  器件、焊盘、板框及其他铜保持不变，主干因宿主自动切分由 1→5→7→7 段，几何连续覆盖始终为 321.2 mil、
-  线宽 10 mil；最终 `pcb net-path --from R1.2 --to R2.1 --net TEST_LINK --layer 1 --json` 返回 `connected:true`。
-  本样例现场覆盖矩形 SMD 焊盘、双端入口和主干切分；泪滴边线切分、圆焊盘及各拒绝分支仍以自动回归为据。
+  现场定向验证与复现参数见[泪滴维护样例](examples/teardrop-maintenance/README.md)；不代表整板 E2E 或原生泪滴通过。
 - `easyeda pcb neckdown-plan` — **焊盘入口缩颈**：走线比所进焊盘窄边还宽时（如 10/20 mil 进 0.4 mm QFN 的
   7.9 mil 焊盘），只把焊盘内 + `--extra`（默认 10 mil）一段改成 `--width`，其余保持；`--tolerance`（默认 0.5）
   内视为合适，剩余不足 5 mil 的原宽碎段并入窄段。锁定线只报告。新宽度必须满足该网线宽规则最小值。
