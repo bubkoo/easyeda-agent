@@ -51,6 +51,13 @@ easyeda <domain> <action> [flags]
 用户明确接受的限定范围可以另行决定本次准入，记录方式见[基础验收放行条件](cli-live-test.md#放行条件)；
 未解决问题继续如实列出，不能把“允许继续”写成对应基础动作已经通过。
 
+## 线条形泪滴维护接口
+
+线条形泪滴维护使用独立的离线子命令：`pcb teardrop-delete-plan --board <新回读> --from <旧计划> --out <删除计划>`、
+`pcb teardrop-modify-plan --board <新回读> --from <旧计划> --length-scale <比例> --base-scale <比例> --out <新计划>`。
+修改比例相对于当前焊盘/主走线推导的默认几何，保持线宽；只重建旧计划中指定的入口。
+两者复用 typed 删除/创建剧本，计划匹配不完整、锁定或存在歧义时拒绝输出执行剧本；旧 `teardrop-plan --remove-from` 保留兼容。
+
 ## 设计约束
 
 1. **接口优先**：新增功能先设计子命令签名（命令名 + flags + `--help` 示例），再写实现逻辑。

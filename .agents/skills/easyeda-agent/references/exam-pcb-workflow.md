@@ -95,7 +95,9 @@ easyeda pcb pour-rebuild --project ceshi --doc PCB1      # 考试：添加泪滴
 ```
 
 `neckdown-plan` 修「线宽大于焊盘」；`teardrop-plan` 画考试允许的线条形泪滴（原生泪滴对象无公开接口，
-交付时如实说明）。效果不对就 `teardrop-plan --remove-from tear.json` 删掉重来。
+交付时如实说明）。维护时取得新 dump，用 `teardrop-delete-plan --from tear.json` 删除，或
+`teardrop-modify-plan --from tear.json --length-scale 0.8 --base-scale 0.8` 重算尺寸；均须指定 `--board` 和新的 `--out`。
+匹配不完整或锁定时停止，细节见 [线条形泪滴维护](pcb-layout.md)。
 
 ## 10. 丝印
 
