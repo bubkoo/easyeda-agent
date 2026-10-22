@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { pcbExport3D, MAX_3D_BYTES } from './pcb-export-3d';
+import { pcbExport3D, pcbExport3DShell, MAX_3D_BYTES } from './pcb-export-3d';
 
 function host(options: { drift?: boolean; bindingDrift?: boolean; missing?: boolean; empty?: boolean; oversized?: boolean } = {}) {
 	let calls = 0, reads = 0, modelReads = 0;
@@ -50,4 +50,16 @@ test('invalid export options never reach official exporter', async () => {
 		await assert.rejects(pcbExport3D(payload));
 	}
 	assert.equal(calls(), 0);
+});
+
+test('3D shell export returns the official file and refuses a board without a shell', async () => {
+	host();
+	let shell: File | undefined = new File(['solid shell'], 'shell.stl');
+	(globalThis as any).eda.pcb_ManufactureData.get3DShellFile = async (_n: string, type: string) => { assert.equal(type, 'stl'); return shell; };
+	const res = await pcbExport3DShell({});
+	assert.equal(res.artifacts?.[0].kind, 'pcb_3d_shell');
+	assert.equal(Buffer.from(res.artifacts![0].inlineBase64!, 'base64').toString(), 'solid shell');
+	shell = undefined;
+	await assert.rejects(pcbExport3DShell({}), /no 3D shell/);
+	for (const bad of [{ fileType: 'iges' }, { fileName: '../x' }, { extra: 1 }]) await assert.rejects(pcbExport3DShell(bad));
 });

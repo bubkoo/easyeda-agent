@@ -196,7 +196,7 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		}
 	case "schematic.netflag.create", "schematic.power.connect_pin", "pcb.region.create", "pcb.add_component",
 		"schematic.primitives.delete", "schematic.component.delete", "schematic.pin.disconnect",
-		"board.delete", "pcb.document.delete", "board.new":
+		"board.delete", "pcb.document.delete", "board.new", "pcb.model3d.set_transform", "pcb.model3d.bind":
 		if parsed.Result.Partial || (parsed.Result.Verified != nil && !*parsed.Result.Verified) {
 			return fmt.Errorf("%s: write not fully verified; inspect returned IDs and fresh state before retrying", action)
 		}

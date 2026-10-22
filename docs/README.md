@@ -22,6 +22,7 @@
 | 比较 PCB Layout/Router 算法、最优性与二层验证方案 | [调研与验证计划](pcb-layout-solver-research.md) | 开源源码、MCP/Skill 对照与分层测试；计划不代表已验收 |
 | 逐项验证已有电路块的组合移动与布线空间 | [PCB 开发验证清单](pcb-layout-validation.md) | 独立场景、自动用例映射、现场证据与待办分开记录 |
 | 新增或修复工具能力 | [cli-design.md](cli-design.md)、[protocol.md](protocol.md) | [connector-contract.md](connector-contract.md)、[ecosystem-survey.md](ecosystem-survey.md) |
+| 基于已有 PCB 做 3D 模型核对、修正和导出 | [PCB 3D 建模设计](pcb-3d-design.md) | [字段、动作与测试](pcb-3d-design-detail.md) |
 | 社区贡献 PCB 布局布线算法 | [PCB 求解社区设计](pcb-solver-community-design.md) | [数学模型与 PR 验收](pcb-solver-community-design-detail.md)、[概念表](concepts.md) |
 | 维护 Skill 和知识 | [skill-design.md](skill-design.md)、[编写约定](../.agents/skills/README.md) | [Agent 协作设计](agent-collaboration.md) |
 | 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |

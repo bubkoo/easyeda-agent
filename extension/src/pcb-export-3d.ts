@@ -58,3 +58,34 @@ export async function pcbExport3D(payload: Record<string, unknown>): Promise<Act
 			mimeType: file.type || 'application/octet-stream', inlineBase64: await blobToBase64(file) }],
 		warnings: ['3D geometry and model inclusion require independent inspection; this export does not verify manufacturing or electrical correctness.'] };
 }
+
+/**
+ * Export the 3D enclosure designed on the active PCB (official beta
+ * get3DShellFile). Shell design itself is GUI-only: no primitive API accepts
+ * the shell layers, so an empty result means "no shell designed", not a retry.
+ */
+export async function pcbExport3DShell(payload: Record<string, unknown>): Promise<ActionResult> {
+	if (Object.keys(payload).some(k => !['fileType', 'fileName'].includes(k))) throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Unknown 3D shell export option.');
+	const fileType = payload.fileType ?? 'stl';
+	const fileName = payload.fileName ?? `shell.${fileType}`;
+	if (typeof fileType !== 'string' || !['stl', 'step', 'obj'].includes(fileType)
+		|| typeof fileName !== 'string' || !fileName.trim() || fileName.length > 128 || /[\\/\x00-\x1f]/.test(fileName)) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Use fileType=stl|step|obj and a basename.');
+	}
+	const before = await readResponseContext();
+	if (before.documentType !== 'pcb' || !before.projectUuid || !before.documentUuid) {
+		throw new ActionError(ErrorCodes.INVALID_STATE, 'Activate the target PCB before exporting its 3D shell.');
+	}
+	if (typeof eda.pcb_ManufactureData?.get3DShellFile !== 'function') {
+		throw new ActionError(ErrorCodes.EDA_API_UNAVAILABLE, 'This host does not expose pcb_ManufactureData.get3DShellFile.');
+	}
+	const file = await eda.pcb_ManufactureData.get3DShellFile(fileName, fileType as 'stl' | 'step' | 'obj');
+	if (!file || !file.size) throw new ActionError(ErrorCodes.INVALID_STATE, 'This PCB has no 3D shell to export (design it in the EasyEDA shell editor first; the API cannot create one).');
+	if (file.size > MAX_3D_BYTES) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `3D shell export is ${file.size} bytes, exceeding the 20 MiB transport limit.`);
+	const drift = mutationContextError(before, await readResponseContext());
+	if (drift) throw new ActionError(ErrorCodes.INVALID_STATE, `3D shell export target changed: ${drift}. No artifact accepted.`);
+	const id = newArtifactId();
+	return { result: { artifactId: id, fileType, fileName: file.name || fileName, size: file.size, exportContext: before },
+		artifacts: [{ id, kind: 'pcb_3d_shell', fileName: file.name || fileName,
+			mimeType: file.type || 'application/octet-stream', inlineBase64: await blobToBase64(file) }] };
+}

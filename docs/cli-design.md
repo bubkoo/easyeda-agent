@@ -29,6 +29,8 @@ easyeda <domain> <action> [flags]
 - `pcb export-3d --format obj|step --window <id> --out <新目录>`：官方整板模型，
   前后完整 `pcb dump --include-copper` 等价回读核对身份与版本，保留模型原文件、回读与
   manifest。显式窗口必需；只读，不隐式保存重载，默认不生成缺模型占位。模型绑定不证明导出覆盖。
+- `pcb 3d models|transform|bind|export-shell`：器件 3D 模型清单、摆放修正、实例换绑与外壳导出，
+  分阶段实施，见 [PCB 3D 建模设计](pcb-3d-design.md)。
 
 - `pcb layout render --actual --board <dump.json> --side top|bottom|both --out <图.svg>`：实际回读辅助图；与候选输入互斥，不执行 EDA 动作。
 - `project drawings --from <drawings.json> --out <新目录>`：纯离线组合一页原理图与一块 PCB 的图册，核对文件/回读绑定并保留状态声明。
