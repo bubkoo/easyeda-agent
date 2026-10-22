@@ -42,3 +42,16 @@ func TestDocumentDeleteActionsAreConfirmGated(t *testing.T) {
 		}
 	}
 }
+
+// board.new bootstraps an empty project: a mutating, window-bound board action.
+func TestBoardNewRegistered(t *testing.T) {
+	for _, a := range AllActions() {
+		if a.Name == "board.new" {
+			if !a.Mutates || !a.NeedsWindow || a.Domain != DomainBoard {
+				t.Errorf("board.new: mutates=%v needsWindow=%v domain=%q", a.Mutates, a.NeedsWindow, a.Domain)
+			}
+			return
+		}
+	}
+	t.Fatal("AllActions() is missing board.new — the daemon would reject `easyeda board new`")
+}

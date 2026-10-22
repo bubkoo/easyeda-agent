@@ -185,6 +185,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `board.list` | All boards in the project — name + bound schematic + pcb. |
 | `board.current` | The current board (its bound schematic + PCB). |
 | `board.create` | Bind a schematic and/or PCB into a new board. Fixes a floating PCB before `import_changes`. Mutates. |
+| `board.new` | Bootstrap an empty project: a new Board with a new schematic (≥1 page) and a new PCB, exact `--project` UUID, rollback on failure, verified by fresh board/document readback. Mutates. |
 | `board.rename` | Rename a board by its current name. Mutates. |
 | `board.copy` | Duplicate a board (schematic + PCB). Mutates. |
 | `board.delete` | Delete a board by name together with its bound PCB + schematic (confirmation-gated, no undo). `--dry-run` lists the documents first; `deleted[]`/`residual[]` come from a fresh document readback; `--keep-documents` only unbinds. The CLI then refreshes the official project tree by save → full Web page reload → restore active document (`treeRefreshed`; `--no-tree-refresh` skips). Mutates. |

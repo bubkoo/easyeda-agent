@@ -11550,6 +11550,123 @@ const pcbNewBoard: Handler = async (payload) => {
 	return { result: { boardName, pcbName, pcbUuid, schematicUuid } };
 };
 
+/**
+ * Create a complete, designable Board in the current project: a schematic with
+ * at least one page plus a PCB, bound together. This is the bootstrap for an
+ * EMPTY project — board.new_pcb needs an existing schematic and nothing else
+ * creates one.
+ *
+ * Order follows what the host accepts (board.new_pcb, live): createBoard needs a
+ * document to bind and createPcb is a no-op on a board name that does not exist
+ * yet, so: floating schematic → createBoard(schematic) → createPcb(board) → a
+ * first page if the schematic came without one → optional rename. Any failure
+ * deletes what this call created, newest first, and reports that rollback.
+ * Success is decided by a fresh readback of the board and document lists.
+ */
+const boardNew: Handler = async (payload) => {
+	const projectUuid = requireString(payload, 'projectUuid');
+	const wantName = optionalString(payload, 'name');
+
+	let current;
+	let boards: Array<BoardItem>;
+	try {
+		current = await eda.dmt_Project.getCurrentProjectInfo();
+		boards = (await eda.dmt_Board.getAllBoardsInfo()) ?? [];
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read the current project before creating a Board.');
+	}
+	if (current?.uuid !== projectUuid) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Current project is ${current?.uuid ?? 'unknown'}, not the requested ${projectUuid}; nothing was created.`);
+	}
+	if (wantName && boards.some(b => b?.name === wantName)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `A Board named "${wantName}" already exists; nothing was created.`);
+	}
+
+	const created: { schematicUuid?: string; boardName?: string; pcbUuid?: string } = {};
+	const rollback = async (): Promise<Array<string>> => {
+		const notes: Array<string> = [];
+		const attempt = async (label: string, run: () => Promise<boolean>) => {
+			try { notes.push(`${label}: ${(await run()) ? 'deleted' : 'host returned false'}`); }
+			catch (err) { notes.push(`${label}: threw ${err instanceof Error ? err.message : String(err)}`); }
+		};
+		if (created.pcbUuid) await attempt(`pcb ${created.pcbUuid}`, () => eda.dmt_Pcb.deletePcb(created.pcbUuid!));
+		if (created.boardName) await attempt(`board ${created.boardName}`, () => eda.dmt_Board.deleteBoard(created.boardName!));
+		if (created.schematicUuid) await attempt(`schematic ${created.schematicUuid}`, () => eda.dmt_Schematic.deleteSchematic(created.schematicUuid!));
+		return notes;
+	};
+	const fail = async (step: string, err?: unknown): Promise<never> => {
+		const notes = await rollback();
+		const cause = err === undefined ? 'host returned nothing' : (err instanceof Error ? err.message : String(err));
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `board.new failed at ${step} (${cause}); rolled back what this call created — verify with board.list before retrying.`, `rollback: ${notes.join('; ') || 'nothing to undo'}`);
+	};
+
+	try { created.schematicUuid = await eda.dmt_Schematic.createSchematic(); }
+	catch (err) { return fail('createSchematic', err); }
+	if (!created.schematicUuid) return fail('createSchematic');
+
+	try { created.boardName = await eda.dmt_Board.createBoard(created.schematicUuid); }
+	catch (err) { return fail('createBoard', err); }
+	if (!created.boardName) return fail('createBoard');
+
+	try { created.pcbUuid = await eda.dmt_Pcb.createPcb(created.boardName); }
+	catch (err) { return fail('createPcb', err); }
+	if (!created.pcbUuid) return fail('createPcb');
+
+	let pageUuid: string | undefined;
+	try {
+		pageUuid = (await eda.dmt_Schematic.getSchematicInfo(created.schematicUuid))?.page?.[0]?.uuid
+			?? await eda.dmt_Schematic.createSchematicPage(created.schematicUuid);
+	}
+	catch (err) { return fail('createSchematicPage', err); }
+	if (!pageUuid) return fail('createSchematicPage');
+
+	let boardName = created.boardName;
+	const warnings: Array<string> = [];
+	if (wantName && wantName !== boardName) {
+		let renamed = false;
+		try { renamed = await eda.dmt_Board.modifyBoardName(boardName, wantName); }
+		catch { /* reported below */ }
+		if (renamed) boardName = wantName;
+		else warnings.push(`Board was created as "${boardName}"; renaming it to "${wantName}" failed.`);
+	}
+
+	// Fresh readback: the binding, the page and the PCB must all be listed.
+	const deadline = Date.now() + 5_000;
+	let board: BoardItem | undefined;
+	let pages: Array<{ uuid: string; name: string }> = [];
+	let pcbListed = false;
+	for (;;) {
+		try {
+			board = ((await eda.dmt_Board.getAllBoardsInfo()) ?? []).find(b => b?.name === boardName);
+			pages = ((await eda.dmt_Schematic.getSchematicInfo(created.schematicUuid))?.page ?? []).map(p => ({ uuid: p.uuid, name: p.name }));
+			pcbListed = ((await eda.dmt_Pcb.getAllPcbsInfo()) ?? []).some(p => p.uuid === created.pcbUuid);
+		}
+		catch { /* retry until the deadline */ }
+		const verified = board?.schematic?.uuid === created.schematicUuid && board?.pcb?.uuid === created.pcbUuid
+			&& pages.some(p => p.uuid === pageUuid) && pcbListed;
+		if (verified || Date.now() >= deadline) {
+			if (!verified) warnings.push('Created documents did not all appear in the fresh board/document readback; inspect board.list before retrying.');
+			return {
+				result: {
+					boardName,
+					schematicUuid: created.schematicUuid,
+					schematicName: board?.schematic?.name ?? null,
+					schematicPageUuid: pageUuid,
+					schematicPages: pages,
+					pcbUuid: created.pcbUuid,
+					pcbName: board?.pcb?.name ?? null,
+					projectUuid,
+					partial: !verified,
+					verified,
+				},
+				warnings: warnings.length ? warnings : undefined,
+			};
+		}
+		await sleep(500);
+	}
+};
+
 // system.notify — surface a toast INSIDE the EasyEDA window (设计流程步骤通知).
 // Non-blocking; the design flow calls it as each stage passes so the user can watch
 // progress live ("完成 布线,下一步 铺铜"). type ∈ info|success|warn|error|question.
@@ -16052,6 +16169,7 @@ const HANDLERS: Record<string, Handler> = {
 	'board.current': boardCurrent,
 	'board.create': boardCreate,
 	'board.new_pcb': pcbNewBoard,
+	'board.new': boardNew,
 	'system.notify': systemNotify,
 	'board.rename': boardRename,
 	'board.copy': boardCopy,

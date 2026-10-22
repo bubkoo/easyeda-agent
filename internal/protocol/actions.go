@@ -1173,6 +1173,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list", "pcb.docs"},
 		},
 		{
+			Name:        "board.new",
+			Domain:      DomainBoard,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Create a complete designable Board in the current project — a new schematic with at least one page plus a new PCB, bound together. The bootstrap for an EMPTY project (board.new_pcb needs an existing schematic). projectUuid must equal the current project exactly; an existing name is refused before mutation. Runs createSchematic → createBoard(schematic) → createPcb(board) → first page if none → optional rename; any failure deletes what this call created (newest first) and reports that rollback. Success is a fresh board/document readback (verified); a created set that does not all read back is returned as partial, never thrown.",
+			Inputs:      []string{"projectUuid (exact current project)", "name optional"},
+			Outputs:     []string{"boardName", "schematicUuid", "schematicName", "schematicPageUuid", "schematicPages[]", "pcbUuid", "pcbName", "partial", "verified"},
+			VerifyWith:  []string{"board.list", "schematic.pages.list", "pcb.documents.list"},
+		},
+		{
 			Name:        "board.rename",
 			Domain:      DomainBoard,
 			Phase:       2,

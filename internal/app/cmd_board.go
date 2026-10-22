@@ -76,6 +76,37 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		board.AddCommand(c)
 	}
 
+	// ── new ────────────────────────────────────────────────────────────────
+	// board.new — bootstrap a designable Board (schematic + page + PCB).
+	{
+		var name string
+		c := &cobra.Command{
+			Use:   "new",
+			Short: "Create a Board with a new schematic (one page) and a new PCB — works in an empty project",
+			Long: "Create a complete, designable Board in the project named by --project (its\n" +
+				"exact UUID): a new schematic with at least one page plus a new PCB, bound\n" +
+				"together. Use it to start a fresh/empty project — `pcb new-board` needs an\n" +
+				"existing schematic. --doc is not needed (an empty project has no document).\n" +
+				"Any failed step deletes what this call created; success requires the new\n" +
+				"Board, page and PCB in a fresh readback (verified; otherwise non-zero exit).",
+			Args: cobra.NoArgs,
+			Example: `  easyeda board new --project <projectUuid>
+  easyeda board new --project <projectUuid> --name 主板`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if cfg.project == "" {
+					return fmt.Errorf("--project <exact project UUID> is required")
+				}
+				payload := map[string]any{"projectUuid": cfg.project}
+				if name != "" {
+					payload["name"] = name
+				}
+				return dispatch(cfg, "board.new", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&name, "name", "", "name for the new Board (default: host-assigned)")
+		board.AddCommand(c)
+	}
+
 	// ── rename ─────────────────────────────────────────────────────────────
 	// board.rename
 	{

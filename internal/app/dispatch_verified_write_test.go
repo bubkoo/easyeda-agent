@@ -7,7 +7,7 @@ import (
 )
 
 func TestBasicWriteDispatchRejectsUnverifiedPartial(t *testing.T) {
-	for _, action := range []string{"schematic.netflag.create", "schematic.power.connect_pin", "pcb.region.create", "pcb.add_component", "schematic.primitives.delete", "schematic.component.delete", "schematic.pin.disconnect", "board.delete", "pcb.document.delete"} {
+	for _, action := range []string{"schematic.netflag.create", "schematic.power.connect_pin", "pcb.region.create", "pcb.add_component", "schematic.primitives.delete", "schematic.component.delete", "schematic.pin.disconnect", "board.delete", "pcb.document.delete", "board.new"} {
 		for _, tc := range []struct {
 			result  string
 			failure bool

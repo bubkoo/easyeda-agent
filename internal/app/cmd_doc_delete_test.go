@@ -149,3 +149,24 @@ func TestDocumentDelete_NoRefreshForDryRunKeepOrPartial(t *testing.T) {
 		}
 	}
 }
+
+// board new needs the exact project and forwards it with the optional name.
+func TestBoardNew_RequiresProjectAndWiresPayload(t *testing.T) {
+	build := func(cfg *appConfig) *cobra.Command { return newBoardCmd(cfg, &bytes.Buffer{}, &bytes.Buffer{}) }
+	cap, err := runCapturedCmd(t, build, "new")
+	if err == nil || cap.action != "" {
+		t.Fatalf("expected a refusal without --project, got err=%v action=%q", err, cap.action)
+	}
+
+	cfg, cap, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+	cfg.project = "72880e75d3be4601a20dc1ec3764227b"
+	cmd := newBoardCmd(cfg, &bytes.Buffer{}, &bytes.Buffer{})
+	cmd.SetArgs([]string{"new", "--name", "主板"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if cap.action != "board.new" || cap.payload["projectUuid"] != cfg.project || cap.payload["name"] != "主板" {
+		t.Fatalf("got action=%q payload=%v", cap.action, cap.payload)
+	}
+}

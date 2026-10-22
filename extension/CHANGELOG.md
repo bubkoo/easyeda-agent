@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- 新增 `board.new`（`easyeda board new --project <uuid> [--name]`）：空工程起步，在当前工程新建组合并在其中建原理图（至少一页）和 PCB。按宿主可接受的顺序（游离原理图 → 绑定组合 → 建 PCB → 补首页 → 改名）执行，任一步失败按逆序删除本次已建部分并报告；以新回读的组合与文档列表判定 `verified`。
 - `board.delete` 现在真正删除组合绑定的 PCB 与原理图（全部图页）：平台 `deleteBoard` 只解绑，2026-10-21 ceshi 实测删后 PCB 与原理图页都还在。解绑后用 `deletePcb` / `deleteSchematic` 显式删除，结果按新的文档回读报告 `deleted[]` 与 `residual[]`，有残留即 `partial`、CLI 非零退出；`--dry-run` 先列出将删文档，`--keep-documents` 保留旧的只解绑行为。
 - 新增 `pcb.document.delete`（`easyeda pcb doc-delete --uuid --expected-name`）：删除一份未绑定的 PCB 文档，按精确 UUID + 名称预检，拒绝仍被 Board 绑定的 PCB，删后回读确认不再列出；复用模块 PCB 连带删掉的文档报告在 `alsoDeleted`。
 - `easyeda board delete` / `pcb doc-delete` 删除验证通过后刷新官方工程树：官方 SDK 没有刷新工程树的接口，删掉的文档在重载页面前一直挂在左侧树上。现在保存前台文档 → 重载整个 Web 页面 → 恢复原前台文档并回读，结果报告 `treeRefreshed` / `treeRefresh`；刷新失败单独报告、不把删除判失败；dry-run、`--keep-documents`、partial 不刷新，`--no-tree-refresh` 可关闭。
