@@ -10,8 +10,8 @@
 |---|---|---|
 | 3D 模型库增删查、复制、器件关联 | `lib_3DModel.*`、`lib_Device.modify` | 已实现（`lib model3d`、`lib device set-model3d`） |
 | 读器件实例绑定的模型 | `IPCB_PrimitiveComponent.getState_Model3D` | 可读，现场已验 |
-| 读/改器件实例的模型摆放 | `otherProperty["3D Model Transform"]` | 可读；9 个数（mil/度），写入待现场验证 |
-| 改器件实例绑定的模型 | `otherProperty["3D Model"]`、`["3D Model Title"]` | 无专用接口，经 `otherProperty` 写入待现场验证 |
+| 读/改器件实例的模型摆放 | `otherProperty["3D Model Transform"]` | 可读可写，现场已验；9 个数（mil/度） |
+| 改器件实例绑定的模型 | `otherProperty["3D Model"]`、`["3D Model Title"]` | 无专用接口；经 `otherProperty` 写入，现场已验（含导出几何） |
 | 整板 OBJ/STEP 导出 | `pcb_ManufactureData.get3DFile`（beta） | 已实现（`pcb export-3d`） |
 | 3D 外壳导出 | `pcb_ManufactureData.get3DShellFile`（beta） | 可调用；未设计外壳时返回空 |
 | 3D 外壳设计 | 外壳层 53–55 | 不支持：线、填充、区域接口都不接受外壳层 |
@@ -43,6 +43,8 @@
 1. `models`（只读）→ 2. `transform` → 3. `bind` → 4. `export-shell`。
 每步完成连接器单测、Go 单测，并在 `ceshi` 上现场回读后再进入下一步。
 
-当前状态（2026-10-23）：四个命令已实现并通过离线测试；现场只做过只读探测，
-写命令的保存 → 重载 → 回读和导出几何验证尚未执行（`planned`），不得标为 `live-verified`。
+当前状态（2026-10-23，ceshi，Web 4.1.78）：四个命令已在现场验证。`models` 全量 23 件读取；
+`transform`、`bind` 经保存 → 重载 → 回读确认只有目标器件变化，导出 OBJ 证实几何随之改变，
+并已恢复原值、回读与基线一致；`export-shell` 只验证了未设计外壳时的报错（接口无法创建外壳）。
+摆放 9 个数中只有偏移 Z 经几何严格验证，其余分量仍是推断。
 3D 预览截图和外壳设计等官方开放接口后再立项。

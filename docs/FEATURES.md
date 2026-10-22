@@ -237,7 +237,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `schematic.export.netlist` | Export the netlist as an artifact. |
 | `schematic.export.bom` | Export BOM as csv or xlsx artifact. |
 
-### PCB 3D models (4 actions, offline-tested; writes not yet live-verified)
+### PCB 3D models (4 actions, live-verified on Web 4.1.78; shell export only the no-shell path)
 
 | Action | What |
 |---|---|

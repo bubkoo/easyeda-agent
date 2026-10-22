@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- 新增 `easyeda pcb 3d` 命令组（器件 3D 模型基础操作）：`models` 只读列出每个器件的绑定模型、摆放（`3D Model Transform` 尺寸/旋转/偏移）、`Height` 与覆盖计数，`--missing` 只看未绑定；`transform`（`pcb.model3d.set_transform`）按轴修改单个器件的模型摆放；`bind`（`pcb.model3d.bind`）把单个器件实例换绑到库中已有模型；`export-shell`（`pcb.export.3d_shell`）导出官方外壳编辑器里设计的外壳（STL/STEP/OBJ）。写入只改目标键、重申位号、不写投影键，回读有其他变化即 `partial` 并附写前值。离线测试通过，写命令待现场保存重载回读验证。`PROJECTED_STATE_KEYS` 移至 `projected-keys.ts` 供复用。
+- 新增 `easyeda pcb 3d` 命令组（器件 3D 模型基础操作）：`models` 只读列出每个器件的绑定模型、摆放（`3D Model Transform` 尺寸/旋转/偏移）、`Height` 与覆盖计数，`--missing` 只看未绑定；`transform`（`pcb.model3d.set_transform`）按轴修改单个器件的模型摆放；`bind`（`pcb.model3d.bind`）把单个器件实例换绑到库中已有模型；`export-shell`（`pcb.export.3d_shell`）导出官方外壳编辑器里设计的外壳（STL/STEP/OBJ）。写入只改目标键、重申位号、不写投影键，回读有其他变化即 `partial` 并附写前值。Web 4.1.78 现场验证：写命令经保存重载回读与导出 OBJ 几何核对（偏移 Z 严格验证），外壳仅验证了未设计时的报错。`PROJECTED_STATE_KEYS` 移至 `projected-keys.ts` 供复用。
 - 新增 `editor.panels`（`easyeda editor panels --left open|closed --right open|closed`）：用官方 `sys_PanelControl` 收起/展开左右侧栏，只改界面不改工程。SDK 读不到侧栏开合状态，结果报告实际调用和锁定状态；锁定的侧栏如实报告、不解锁。配合 `view fit` 居中展示。
 - 新增 `board.new`（`easyeda board new --project <uuid> [--name]`）：空工程起步，在当前工程新建组合并在其中建原理图（至少一页）和 PCB。按宿主可接受的顺序（游离原理图 → 绑定组合 → 建 PCB → 补首页 → 改名）执行，任一步失败按逆序删除本次已建部分并报告；以新回读的组合与文档列表判定 `verified`。
 - `board.delete` 现在真正删除组合绑定的 PCB 与原理图（全部图页）：平台 `deleteBoard` 只解绑，2026-10-21 ceshi 实测删后 PCB 与原理图页都还在。解绑后用 `deletePcb` / `deleteSchematic` 显式删除，结果按新的文档回读报告 `deleted[]` 与 `residual[]`，有残留即 `partial`、CLI 非零退出；`--dry-run` 先列出将删文档，`--keep-documents` 保留旧的只解绑行为。

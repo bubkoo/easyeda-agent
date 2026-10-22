@@ -38,7 +38,7 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 [PCB 三维导出](../.agents/skills/easyeda-agent/references/pcb.md#真实-pcb-三维导出)。
 
 **器件 3D 模型摆放**（3D model transform）是 PCB 器件实例 `otherProperty["3D Model Transform"]`
-的 9 个数：尺寸 XYZ、旋转 XYZ、偏移 XYZ（mil/度，映射由现场样本推断）。它只描述模型相对
+的 9 个数：尺寸 XYZ、旋转 XYZ、偏移 XYZ（mil/度；偏移 Z 经导出几何验证，其余分量由现场样本推断）。它只描述模型相对
 封装怎么放，不改封装、焊盘或电气；实例绑定的模型由 `3D Model` 键与 `getState_Model3D()` 表达，
 与器件库的模型关联是两件事。见 [PCB 3D 建模设计](pcb-3d-design.md)。
 

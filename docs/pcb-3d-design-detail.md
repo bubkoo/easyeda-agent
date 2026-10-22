@@ -12,8 +12,9 @@
   `尺寸X,尺寸Y,尺寸Z,旋转X,旋转Y,旋转Z,偏移X,偏移Y,偏移Z`，长度单位 mil、角度单位度：
   C0805 为 `78.74,51.181`（2.0×1.3 mm）；插件排针偏移 Z 为 `-118.11`（-3 mm）；
   贴片天线旋转 X 为 `180`；所有样本尺寸 Z 为 `0`（推断为“按模型原高”）。
-  与官方外部库 `adjustment {size, rotation, offset}` 结构一致。映射标为 `inferred`，
-  以导出 OBJ 的顶点位移验证后改为 `verified`。
+  与官方外部库 `adjustment {size, rotation, offset}` 结构一致。映射整体仍标 `inferred`；
+  其中偏移 Z 已严格验证：R1 偏移 Z +1 mm 后导出 OBJ 恰有 195 个顶点（1.0×0.5 mm 的 R0402 模型）
+  变化，全部下移 1 mm 后与原顶点逐一相同，其余顶点不变。OBJ 长度单位为 mm，不按器件分组。
 - `otherProperty.Height`：部分器件有（如 `1.3mm`），供官方“自动生成缺失模型”使用。
 - `get3DShellFile('shell','stl')` 在未设计外壳的板上返回 `undefined`。
 - 当前板 `getCurrentPhysicalStackingConfigurationName()` 无自定义层叠时为空。
@@ -57,3 +58,13 @@ height|null`；`summary{total,bound,unbound,unknown}`；`transformUnit:"mil"`、
 - Go：命令参数校验（单位换算、至少一个分量、互斥项）；动作已注册且写动作进入验证写入名单。
 - 现场：`ceshi` 上 `models` 全量读；`transform` 改一个器件后 save → reload → 回读，
   再恢复原值并回读；导出 OBJ 前后比较该器件顶点位移。
+
+## 现场验证记录（ceshi，2026-10-23，Web 4.1.78，连接器含本功能的构建）
+
+| 项 | 结果 |
+|---|---|
+| `models` | 23/23 bound，transform 全部 `ok`，与只读探测一致 |
+| `transform --ref R1 --offset-z 1` | dry-run 正确；写入即时 verified；保存重载后全量对比只有 R1 变化；OBJ 顶点严格验证；恢复后与基线一致 |
+| `bind --ref R1`（换成 C0402 模型） | 即时 verified；保存重载后只有 R1 的模型变化、摆放保留；OBJ 中该位置模型高度 0.36→0.5 mm；换回后与基线一致 |
+| `export-shell` | 无外壳板返回 `INVALID_STATE` 且不写文件；有外壳的正向路径无法用接口构造，未验证 |
+

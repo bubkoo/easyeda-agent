@@ -108,7 +108,8 @@ easyeda pcb 3d export-shell --format stl --window <id> --out ./shell.stl
 - 两个写命令先 `--dry-run`；回读出现任何别的属性或位号变化即 `partial` 非零退出并附写前值，
   不要重试。持久性按 `pcb save → doc reload → pcb 3d models` 确认，几何以导出模型为准。
 - `export-shell` 只导出在官方外壳编辑器里画好的外壳；接口不能创建外壳，未设计时明确报错。
-- 状态：离线单测通过，写命令尚未在现场完成保存重载回读，使用时按上面步骤自行回读。
+- 状态：四个命令已在 Web 4.1.78 现场验证（写命令经保存重载回读与导出几何核对）；
+  摆放 9 个数中只有偏移 Z 经几何验证，其余按尺寸/旋转/偏移 XYZ 推断。外壳正向导出未验证。
   设计与边界见仓库 `docs/pcb-3d-design.md`。
 
 ### Navigation
