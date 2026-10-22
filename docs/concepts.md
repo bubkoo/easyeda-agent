@@ -134,6 +134,13 @@ order 0 回显为该层的下一 order；创建参数的正数又是同层插入
 同层既有对象的预期顺移及其他层不变。该顺序证明不证明异网重叠处的实际铜归属，
 后者仍需材料化铺铜和 DRC。
 
+## 线条形泪滴维护
+
+**线条形泪滴维护计划** 使用旧计划记录的同网、同层、同宽几何，在新 PCB 回读中识别完整线段或连续碎段。
+删除只针对这些匹配对象；修改先在离线副本移除旧线，再按当前焊盘和主走线重算指定入口，输出先删后建的 typed 剧本。
+锁定、缺段、重复覆盖和几何漂移均拒绝；这不是原生 `TEARDROP` 对象 API。计划是当前回读的建议，执行前必须保持文档未变，
+执行后仍须重铺铜、保存、重载与新回读；多步剧本不具备事务回滚能力。
+
 ## PCB reference pictures and manufacturing artwork
 
 An **embedded reference picture** (参考图片) preserves the source artwork through

@@ -15,6 +15,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -279,6 +280,10 @@ func peLineClear(l peLine, tracks []peTrack, pads []pePad, vias []peVia, clr flo
 // keep `clr` from other-net copper are skipped with the reason; a re-run skips
 // entries that already carry the same lines.
 func planTeardrops(tracks []peTrack, pads []pePad, vias []peVia, clr float64, exclude map[string]bool) ([]peLine, []peSkip) {
+	return planTeardropsScaled(tracks, pads, vias, clr, exclude, 1, 1)
+}
+
+func planTeardropsScaled(tracks []peTrack, pads []pePad, vias []peVia, clr float64, exclude map[string]bool, lengthScale, baseScale float64) ([]peLine, []peSkip) {
 	var lines []peLine
 	skips := []peSkip{}
 	have := func(a, b [2]float64, net string, layer int) bool {
@@ -418,14 +423,18 @@ func planTeardrops(tracks []peTrack, pads []pePad, vias []peVia, clr float64, ex
 			// The tip stays 1 mil inside the segment so it lands on the track's
 			// interior (an endpoint would read as a corner); short exits still get
 			// a short teardrop down to 0.75 track widths.
-			length := math.Min(free-1, math.Max(2*halfPerp, 3*t.W))
+			length := math.Min(free-1, math.Max(2*halfPerp, 3*t.W)*lengthScale)
 			if length < 0.75*t.W {
 				skips = append(skips, peSkip{Track: t.ID, Pad: p.Ref, Reason: "track leaves the pad too short for a teardrop"})
 				continue
 			}
 			// Keep a teardrop's proportion (half-angle ≤ ~35°): a base wider than
 			// the run is a fan, and its lines meet the track at an acute corner.
-			h = math.Min(h, 0.7*length)
+			h = math.Min(h*baseScale, 0.7*length)
+			if h < 0.05 {
+				skips = append(skips, peSkip{Track: t.ID, Pad: p.Ref, Reason: "teardrop base too small after scaling"})
+				continue
+			}
 			bx, by := x+ux*te, y+uy*te
 			// Keep both tips off a joint between collinear pieces (a tip on a
 			// joint is a track endpoint, i.e. a corner).
@@ -489,32 +498,279 @@ func padEntries(tracks []peTrack, p pePad, layer int) int {
 	return n
 }
 
-// teardropRemovals finds the primitives that realise previously planned lines:
-// an exact match, or unlocked same-net pieces lying along a planned line (the
-// host splits a line where another track ends on it).
-func teardropRemovals(tracks []peTrack, planned []peLine) []string {
+// teardropRemovals 要求每条旧线被新回读中的同网、同层、同宽碎段完整且唯一覆盖。
+// 容差采用固定 mil 值，不能随线长扩大；锁定/缺段/重叠均拒绝整个计划。
+func teardropRemovals(tracks []peTrack, planned []peLine) ([]string, error) {
+	const eps = 0.05
 	seen := map[string]bool{}
 	var ids []string
-	for _, l := range planned {
+	for i, l := range planned {
 		dx, dy := l.To[0]-l.From[0], l.To[1]-l.From[1]
-		L := math.Hypot(dx, dy)
-		if L == 0 {
-			continue
+		length := math.Hypot(dx, dy)
+		if length <= eps || !peFinite(length) || l.Width <= 0 || !peFinite(l.Width) {
+			return nil, fmt.Errorf("invalid planned line %d", i)
 		}
-		on := func(x, y float64) bool {
-			u := ((x-l.From[0])*dx + (y-l.From[1])*dy) / (L * L)
-			return u > -0.01 && u < 1.01 && math.Abs((x-l.From[0])*dy-(y-l.From[1])*dx)/L < 0.6
+		type piece struct {
+			start, end float64
+			id         string
+		}
+		var pieces []piece
+		project := func(x, y float64) (float64, bool) {
+			along := ((x-l.From[0])*dx + (y-l.From[1])*dy) / length
+			off := math.Abs((x-l.From[0])*dy-(y-l.From[1])*dx) / length
+			return along, peFinite(along) && along >= -eps && along <= length+eps && off <= eps
 		}
 		for _, t := range tracks {
-			if t.Locked || seen[t.ID] || t.Net != l.Net || t.Layer != l.Layer || !on(t.X1, t.Y1) || !on(t.X2, t.Y2) {
+			if t.Net != l.Net || t.Layer != l.Layer {
 				continue
 			}
-			seen[t.ID] = true
-			ids = append(ids, t.ID)
+			a, aok := project(t.X1, t.Y1)
+			b, bok := project(t.X2, t.Y2)
+			if !aok || !bok {
+				continue
+			}
+			if t.ID == "" || t.Locked || !peFinite(t.W) || math.Abs(t.W-l.Width) > 0.01 {
+				return nil, fmt.Errorf("planned line %d: matching track %q is locked, invalid or has changed width", i, t.ID)
+			}
+			if a > b {
+				a, b = b, a
+			}
+			if b-a <= 1e-6 {
+				return nil, fmt.Errorf("planned line %d: degenerate track %s", i, t.ID)
+			}
+			pieces = append(pieces, piece{a, b, t.ID})
+		}
+		sort.Slice(pieces, func(i, j int) bool { return pieces[i].start < pieces[j].start })
+		end := 0.0
+		for _, p := range pieces {
+			if math.Abs(p.start-end) > eps || seen[p.id] {
+				return nil, fmt.Errorf("planned line %d: gap, overlap or ambiguous track %s", i, p.id)
+			}
+			seen[p.id] = true
+			ids = append(ids, p.id)
+			end = p.end
+		}
+		if len(pieces) == 0 || math.Abs(end-length) > eps {
+			return nil, fmt.Errorf("planned line %d: missing or changed geometry; capture again and reconcile the old plan", i)
 		}
 	}
 	sort.Strings(ids)
-	return ids
+	return ids, nil
+}
+
+func peFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+func teardropKey(l peLine) string { return fmt.Sprintf("%s/%d/%s", l.Net, l.Layer, l.Reason) }
+
+func readTeardropPlan(path string) ([]peLine, error) {
+	var plan struct {
+		Units string   `json:"units"`
+		Lines []peLine `json:"lines"`
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(raw, &plan); err != nil {
+		return nil, err
+	}
+	if plan.Units != "mil" || len(plan.Lines) == 0 {
+		return nil, fmt.Errorf("expected a non-empty teardrop plan with units=mil")
+	}
+	pairs := map[string][]peLine{}
+	for i, l := range plan.Lines {
+		if l.Net == "" || !strings.HasPrefix(l.Reason, "teardrop ") || strings.TrimSpace(strings.TrimPrefix(l.Reason, "teardrop ")) == "" || (l.Layer != 1 && l.Layer != 2 && (l.Layer < 15 || l.Layer > 44)) {
+			return nil, fmt.Errorf("invalid teardrop identity at line %d", i)
+		}
+		for _, v := range []float64{l.From[0], l.From[1], l.To[0], l.To[1], l.Width} {
+			if !peFinite(v) {
+				return nil, fmt.Errorf("non-finite line %d", i)
+			}
+		}
+		if l.Width <= 0 || math.Hypot(l.To[0]-l.From[0], l.To[1]-l.From[1]) <= 0.05 {
+			return nil, fmt.Errorf("invalid line geometry %d", i)
+		}
+		key := teardropKey(l)
+		pairs[key] = append(pairs[key], l)
+	}
+	for key, pair := range pairs {
+		if len(pair) != 2 || pair[0].Width != pair[1].Width || pair[0].From == pair[1].From || pair[0].To == pair[1].To {
+			return nil, fmt.Errorf("expected two distinct same-width lines for %s", key)
+		}
+	}
+	return plan.Lines, nil
+}
+
+func teardropDeleteSteps(ids []string) []map[string]any {
+	var steps []map[string]any
+	for i := 0; i < len(ids); i += 40 {
+		steps = append(steps, map[string]any{"id": fmt.Sprintf("del-%d", i/40), "action": "pcb.route.delete", "payload": map[string]any{"primitiveIds": ids[i:min(i+40, len(ids))], "kind": "track"}})
+	}
+	return steps
+}
+
+func modifyTeardrops(tracks []peTrack, pads []pePad, vias []peVia, previous []peLine, clr, lengthScale, baseScale float64) ([]string, []peLine, error) {
+	for _, v := range []float64{clr, lengthScale, baseScale} {
+		if !peFinite(v) || v <= 0 {
+			return nil, nil, fmt.Errorf("clearance and scales must be finite and positive")
+		}
+	}
+	if baseScale > 1 {
+		return nil, nil, fmt.Errorf("base-scale must be <= 1 to keep the base inside the pad")
+	}
+	ids, err := teardropRemovals(tracks, previous)
+	if err != nil {
+		return nil, nil, err
+	}
+	removed := map[string]bool{}
+	for _, id := range ids {
+		removed[id] = true
+	}
+	remaining := []peTrack{}
+	for _, t := range tracks {
+		if !removed[t.ID] {
+			remaining = append(remaining, t)
+		}
+	}
+	wanted := map[string]int{}
+	widths := map[string]float64{}
+	for _, l := range previous {
+		wanted[teardropKey(l)]++
+		widths[teardropKey(l)] = l.Width
+	}
+	candidates, _ := planTeardropsScaled(remaining, pads, vias, clr, nil, lengthScale, baseScale)
+	var lines []peLine
+	found := map[string]int{}
+	for _, l := range candidates {
+		key := teardropKey(l)
+		if wanted[key] > 0 {
+			if math.Abs(l.Width-widths[key]) > 0.01 {
+				return nil, nil, fmt.Errorf("cannot rebuild %s: parent track width changed; reconcile the old plan first", key)
+			}
+			lines = append(lines, l)
+			found[key]++
+		}
+	}
+	for key, n := range wanted {
+		if found[key] != n {
+			return nil, nil, fmt.Errorf("cannot rebuild %s safely (%d/%d lines); no deletion planned", key, found[key], n)
+		}
+	}
+	return ids, lines, nil
+}
+
+// 不允许输出覆盖输入或已有文件，防止丢失可追溯的旧计划，或误用上次留下的剧本。
+func teardropOutputPaths(out string, inputs ...string) (string, error) {
+	playbook := strings.TrimSuffix(out, ".json") + ".playbook.json"
+	for _, name := range []string{out, playbook} {
+		abs, err := filepath.Abs(name)
+		if err != nil {
+			return "", err
+		}
+		for _, in := range inputs {
+			p, err := filepath.Abs(in)
+			if err != nil {
+				return "", err
+			}
+			if abs == p {
+				return "", fmt.Errorf("output must not overwrite input %s", in)
+			}
+		}
+		if _, err := os.Lstat(name); err == nil {
+			return "", fmt.Errorf("output already exists: %s; choose a new --out", name)
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+	return playbook, nil
+}
+
+func newPcbTeardropEditCmd(stdout io.Writer, modify bool) *cobra.Command {
+	var board, from, out, project, doc string
+	var clr, lengthScale, baseScale float64
+	name := "teardrop-delete-plan"
+	if modify {
+		name = "teardrop-modify-plan"
+	}
+	short := "规划线条形泪滴的删除（离线，输出 typed apply 剧本）"
+	if modify {
+		short = "规划线条形泪滴的尺寸修改（离线，输出 typed apply 剧本）"
+	}
+	cmd := &cobra.Command{Use: name, Short: short, Args: cobra.NoArgs,
+		Long: `读取新 pcb dump --include-copper 和旧 teardrop-plan，仅处理旧计划的线条形泪滴。
+同网、同层、同宽的完整线或连续碎段必须唯一覆盖旧几何；锁定、缺段或漂移时拒绝。
+修改按当前焊盘/主走线的默认几何乘比例重算，只重建旧计划的入口，保持线宽。
+length-scale > 0，base-scale 在 (0,1]；长度仍受走线空间限制，底边仍检查轮廓和间距。
+输出计划和 .playbook.json，不写 EDA。保持板未变再 easyeda apply，随后重铺铜、保存、重载、回读与 DRC。
+多步剧本不是事务；中途失败先回读，禁止盲目重放。原生 TEARDROP 对象不在本命令范围。`,
+		Example: "  easyeda pcb " + name + " --board fresh.json --from tear.json --out next.json --apply-project ceshi --apply-doc PCB1",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			playbook, err := teardropOutputPaths(out, board, from)
+			if err != nil {
+				return err
+			}
+			prev, err := readTeardropPlan(from)
+			if err != nil {
+				return err
+			}
+			b, err := loadBoardSnapshotPath(board)
+			if err != nil {
+				return err
+			}
+			tracks, pads, vias, err := peFromSnapshot(b)
+			if err != nil {
+				return err
+			}
+			var ids []string
+			var lines []peLine
+			if modify {
+				if b.Copper.Availability["vias"] != "available" || b.ComponentsAvailability != "available" {
+					return fmt.Errorf("modification requires available vias and components in a fresh dump")
+				}
+				if !cmd.Flags().Changed("clearance") && b.Rules != nil && math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil) > 0 {
+					clr = math.Max(b.Rules.ClearanceTrackTrackMil, b.Rules.ClearanceMil) + 0.5
+				}
+				ids, lines, err = modifyTeardrops(tracks, pads, vias, prev, clr, lengthScale, baseScale)
+			} else {
+				ids, err = teardropRemovals(tracks, prev)
+			}
+			if err != nil {
+				return err
+			}
+			steps := teardropDeleteSteps(ids)
+			for i, l := range lines {
+				steps = append(steps, peLineStep(fmt.Sprintf("tear-%d", i), l))
+			}
+			plan := map[string]any{"units": "mil", "from": from, "primitiveIds": ids, "lines": lines}
+			if modify {
+				plan["clearance"] = clr
+				plan["lengthScale"] = lengthScale
+				plan["baseScale"] = baseScale
+			}
+			if err = peWrite(out, plan); err != nil {
+				return err
+			}
+			if err = peWrite(playbook, pePlaybook(name, project, doc, steps)); err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "%s: delete %d primitive(s), create %d line(s) → %s (+ .playbook.json)\n", name, len(ids), len(lines), out)
+			return nil
+		}}
+	cmd.Flags().StringVar(&board, "board", "", "新 pcb dump --include-copper JSON")
+	cmd.Flags().StringVar(&from, "from", "", "原 teardrop-plan 或上次修改计划 JSON")
+	cmd.Flags().StringVar(&out, "out", "", "新计划路径（不得已存在）")
+	cmd.Flags().StringVar(&project, "apply-project", "", "剧本目标工程")
+	cmd.Flags().StringVar(&doc, "apply-doc", "", "剧本目标 PCB")
+	for _, f := range []string{"board", "from", "out"} {
+		_ = cmd.MarkFlagRequired(f)
+	}
+	if modify {
+		cmd.Flags().Float64Var(&clr, "clearance", 6.5, "与异网焊盘、走线和过孔的间距，mil；默认使用回读规则 +0.5")
+		cmd.Flags().Float64Var(&lengthScale, "length-scale", 1, "相对默认长度的正比例，受可用空间限制")
+		cmd.Flags().Float64Var(&baseScale, "base-scale", 1, "相对默认底边半宽的比例 (0,1]")
+		cmd.Example += " --length-scale 0.8 --base-scale 0.8"
+	}
+	return cmd
 }
 
 func peLineStep(id string, l peLine) map[string]any {
@@ -637,29 +893,25 @@ playbook deleting that plan's lines (and the pieces the host split them into).`,
 				ex[n] = true
 			}
 			if removeFrom != "" {
-				var prev struct {
-					Lines []peLine `json:"lines"`
+				if _, err := teardropOutputPaths(tOut, tBoard, removeFrom); err != nil {
+					return err
 				}
-				raw, err := os.ReadFile(removeFrom)
+				prev, err := readTeardropPlan(removeFrom)
 				if err != nil {
 					return err
 				}
-				if err := json.Unmarshal(raw, &prev); err != nil {
-					return fmt.Errorf("--remove-from %s: %w", removeFrom, err)
+				ids, err := teardropRemovals(tracks, prev)
+				if err != nil {
+					return err
 				}
-				ids := teardropRemovals(tracks, prev.Lines)
-				var steps []map[string]any
-				for i := 0; i < len(ids); i += 40 {
-					steps = append(steps, map[string]any{"id": fmt.Sprintf("del-%d", i/40), "action": "pcb.route.delete",
-						"payload": map[string]any{"primitiveIds": ids[i:min(i+40, len(ids))], "kind": "track"}})
-				}
-				if err := peWrite(tOut, map[string]any{"removeFrom": removeFrom, "planned": len(prev.Lines), "primitiveIds": ids}); err != nil {
+				steps := teardropDeleteSteps(ids)
+				if err := peWrite(tOut, map[string]any{"removeFrom": removeFrom, "planned": len(prev), "primitiveIds": ids}); err != nil {
 					return err
 				}
 				if err := peWrite(strings.TrimSuffix(tOut, ".json")+".playbook.json", pePlaybook("teardrop-remove", tProject, tDoc, steps)); err != nil {
 					return err
 				}
-				fmt.Fprintf(stdout, "teardrop-plan --remove-from: %d primitive(s) for %d planned line(s) → %s (+ .playbook.json)\n", len(ids), len(prev.Lines), tOut)
+				fmt.Fprintf(stdout, "teardrop-plan --remove-from: %d primitive(s) for %d planned line(s) → %s (+ .playbook.json)\n", len(ids), len(prev), tOut)
 				return nil
 			}
 			lines, skips := planTeardrops(tracks, pads, vias, clr, ex)
@@ -687,5 +939,5 @@ playbook deleting that plan's lines (and the pieces the host split them into).`,
 	tear.Flags().StringVar(&removeFrom, "remove-from", "", "instead of planning, emit a playbook deleting the teardrops of this earlier plan (exact lines + host-split pieces)")
 	_ = tear.MarkFlagRequired("board")
 	_ = tear.MarkFlagRequired("out")
-	return []*cobra.Command{neck, tear}
+	return []*cobra.Command{neck, tear, newPcbTeardropEditCmd(stdout, false), newPcbTeardropEditCmd(stdout, true)}
 }
