@@ -157,6 +157,15 @@ func AllActions() []ActionSpec {
 		// ── view (editor canvas, document-agnostic — schematic & PCB) ──────
 		// All map to eda.dmt_EditorControl.* and act on the focused canvas.
 		{
+			Name:        "editor.panels",
+			Domain:      DomainDocument,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Open or close the editor's left/right side panels (eda.sys_PanelControl open*/close*Panel). UI only — never changes the project, so it is not a mutation. The SDK has no open/closed getter: the result reports the call made per side and the lock (pin) state read before it (stateReadable=false); a locked panel is reported in warnings and never unlocked. Pair with view.fit to centre the design.",
+			Inputs:      []string{"left optional (open|closed)", "right optional (open|closed)"},
+			Outputs:     []string{"left {requested,call,locked}", "right {requested,call,locked}", "stateReadable=false"},
+		},
+		{
 			Name:        "view.fit",
 			Domain:      DomainDocument,
 			Phase:       1,
@@ -1454,6 +1463,31 @@ func AllActions() []ActionSpec {
 			Description: "Export the active PCB through official beta get3DFile (OBJ or STEP). Read-only; preserves the returned file/container, capped at 20 MiB. Reports component model bindings, not guaranteed export coverage. STEP includes only STEP source models. CLI verifies artifact bytes and binds export to fresh before/after board readbacks.",
 			Inputs:      []string{"fileType optional (obj|step, default obj)", "fileName optional (basename)", "modelMode optional (Outfit|Parts)", "elements optional (official names, default Component Model)", "autoGenerateModels optional (default false)"},
 			Outputs:     []string{"artifactId", "fileType", "size", "exportContext", "models", "modelCoverage=binding-only"},
+		},
+		{
+			Name: "pcb.model3d.list", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Description: "List every component on the active PCB with its bound 3D model (getState_Model3D), parsed placement (otherProperty[\"3D Model Transform\"]: size/rotation/offset XYZ in mil/deg, mapping inferred) and Height attribute. Unreadable components count as unknown, never dropped. Read-only.",
+			Outputs:     []string{"components[] {primitiveId, designator, layer, footprint, model|null, status bound|unbound|unknown, transform|null, transformStatus ok|missing|malformed|unknown, height}", "summary {total, bound, unbound, unknown}", "transformUnit=mil", "rotationUnit=deg", "transformMapping=inferred"},
+		},
+		{
+			Name: "pcb.model3d.set_transform", Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
+			Description: "Change named axes of one component's 3D model placement (otherProperty[\"3D Model Transform\"]), keeping every other axis. Exactly one designator match and a readable 9-number placement are required before writing. Writes only non-projected keys plus the re-asserted designator; a fresh readback must show the new placement, the same designator and no other attribute change, else partial with otherPropertyBefore (never retried). dryRun/noop never write.",
+			Inputs:      []string{"designator", "patch {size?,rotation?,offset?} each {x?,y?,z?} (mil / deg)", "dryRun optional"},
+			Outputs:     []string{"designator", "primitiveId", "before", "after", "transform", "verified", "partial", "noop", "dryRun", "problems", "otherPropertyBefore"},
+			VerifyWith:  []string{"pcb.model3d.list"},
+		},
+		{
+			Name: "pcb.model3d.bind", Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
+			Description: "Bind or replace the library 3D model of ONE PCB component instance (no dedicated host setter: writes otherProperty[\"3D Model\"]=uuid|libraryUuid and [\"3D Model Title\"]). The model must exist (lib_3DModel.get) before writing; the Device library record and the placement are untouched. Verified by getState_Model3D plus a no-other-key-changed readback, else partial with otherPropertyBefore.",
+			Inputs:      []string{"designator", "model {uuid, libraryUuid}", "dryRun optional"},
+			Outputs:     []string{"designator", "primitiveId", "model", "previous", "verified", "partial", "noop", "dryRun", "problems", "otherPropertyBefore"},
+			VerifyWith:  []string{"pcb.model3d.list"},
+		},
+		{
+			Name: "pcb.export.3d_shell", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Description: "Export the 3D shell (enclosure) designed on the active PCB through official beta get3DShellFile (STL/STEP/OBJ, 20 MiB cap). Read-only. Shell geometry is GUI-only (no primitive API accepts shell layers 53-55); an empty result is INVALID_STATE 'no 3D shell', not a retry.",
+			Inputs:      []string{"fileType optional (stl|step|obj, default stl)", "fileName optional (basename)"},
+			Outputs:     []string{"artifactId", "fileType", "fileName", "size", "exportContext"},
 		},
 		{
 			Name:        "pcb.export.dsn",

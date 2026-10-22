@@ -300,6 +300,10 @@ EasyEDA 交互界面兜底。能力边界与未来 typed 验收见 [project-impo
 - `board.delete` — 删除组合**及其绑定的 PCB 与原理图（全部图页）**（**需确认**，无 undo）。平台 `deleteBoard` 只解绑，文档由 `deletePcb` / `deleteSchematic` 显式删除；先 `--dry-run` 列出将删文档，结果以新回读为准：`deleted[]` 已证实消失，`residual[]` 仍在（`partial` → 非零退出，先查再重试）。`--keep-documents` 只解绑。删除经回读验证后，CLI 会刷新官方工程树：SDK 没有工程树刷新接口，所以保存当前前台文档 → **重载整个 Web 编辑器页面** → 恢复原前台文档并回读核对（同 `easyeda web reload`），会打断正在看编辑器的人，其他打开的文档须已保存。结果附 `treeRefreshed` / `treeRefresh`，刷新失败单独报告、不把删除判为失败；dry-run、`--keep-documents`、partial 不刷新，`--no-tree-refresh` 关闭。
 
 
+## 编辑器界面（不改工程）
+
+- `editor.panels` — 收起/展开左右侧栏（官方 `sys_PanelControl`）：`--left` / `--right` 取 `open|closed`。只改界面，不算写入。SDK 没有读取侧栏开合状态的接口，结果只报告调用了哪个方法及事先读到的锁定（固定）状态（`stateReadable:false`）；侧栏被锁定时写入 warnings，不擅自解锁。收起后接 `easyeda view fit` 居中展示。CLI：`easyeda editor panels --left closed --right closed && easyeda view fit`
+
 ## PCB 属性同步（现有契约）
 
 - `pcb.component.attrs_backfill` — **PCB 器件属性回填（器件标准化 PCB 侧）**。**代价**：回填值只在 PCB 侧，原生 DRC 随即报 `Netlist Error`（原理图与 PCB 网表不一致），故 `pcb import-changes` 默认不再回填（`--sync-attrs` 显式开启），DRC 门禁前不要跑。平台 sch→PCB 导入把 otherProperty 建成**键在值空**（Value/耐压/精度/Datasheet 全 ""），且原理图实例属性值 save/reload 后同样为空（不可作源）——唯一稳定源是 **device 库记录**：按实例 C 号 `getByLcscIds` 解析，只填 PCB 侧空值键（手改值优先，`--overwrite` 强制），全程 PCB 前台。无 C 号器件跳过并报告。`pcb import-changes` 成功后**自动跑**（`--no-sync-attrs` 关）。⚠️ **平台投影键绝不参与 merge**（`Designator`/`Unique ID`/`Name`/`Add into BOM`/`Manufacturer*`/`Supplier*`——它们存在顶层图元状态；库记录的 `Designator:"C?"` 占位键灌进实例会被平台同步成图元位号,一板位号全灭 = 166/166 U? 事故真因,2026-08-09 根治）。CLI：`easyeda pcb sync-attrs [--overwrite]`

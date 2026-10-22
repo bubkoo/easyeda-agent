@@ -92,6 +92,25 @@ easyeda pcb export-3d --format step --project <project-uuid> --window <edadesk-w
 STEP 仅能包含从 STEP 导入的元件模型。导出后独立核对板体、器件、朝向、缺项及可旋转缩放；
 不以文件非空、命令成功或所有模型已绑定代替显示与完整性验证。
 
+### 器件 3D 模型核对与修正
+
+```sh
+easyeda pcb 3d models --project <project> [--missing]
+easyeda pcb 3d transform --ref J1 --offset-z -3 --unit mm --dry-run --project <project> --doc <pcb>
+easyeda pcb 3d bind --ref U1 --model <modelUuid> --model-library <libUuid> --dry-run --project <project> --doc <pcb>
+easyeda pcb 3d export-shell --format stl --window <id> --out ./shell.stl
+```
+
+- `models` 只读：逐器件给出绑定模型、摆放（`3D Model Transform` 的尺寸/旋转/偏移 XYZ，mil/度，
+  映射为现场样本推断 `inferred`）、`Height` 属性与 bound/unbound/unknown 计数。补模型前先跑 `--missing`。
+- `transform` 只改给出的轴，其他轴与其他属性保持；`bind` 只改这一个实例，不改器件库关联
+  （库级用 `lib device set-model3d`），摆放沿用旧值，换绑后用 `models` 复核尺寸与偏移。
+- 两个写命令先 `--dry-run`；回读出现任何别的属性或位号变化即 `partial` 非零退出并附写前值，
+  不要重试。持久性按 `pcb save → doc reload → pcb 3d models` 确认，几何以导出模型为准。
+- `export-shell` 只导出在官方外壳编辑器里画好的外壳；接口不能创建外壳，未设计时明确报错。
+- 状态：离线单测通过，写命令尚未在现场完成保存重载回读，使用时按上面步骤自行回读。
+  设计与边界见仓库 `docs/pcb-3d-design.md`。
+
 ### Navigation
 
 - `pcb.documents.list` — all PCB documents in the project (uuid + name); pair with `document.open`.
@@ -125,6 +144,7 @@ uuid. CLI: `easyeda board …`. Maps to `eda.dmt_Board.*`.
 Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 
 - `view.fit` — zoom to fit all primitives (适应全部, the `K` shortcut) → `easyeda view fit`.
+- `editor.panels` — open/close the left/right side panels (UI only, not a mutation): `easyeda editor panels --left closed --right closed && easyeda view fit` to give the canvas the full width and centre the design. The SDK cannot read whether a panel is open, so the result reports the call made and each panel's lock (pin) state; a locked panel is reported and never unlocked.
 - `view.zoom` — pan/zoom to a center coordinate and/or scale percent (`--x/--y/--scale`; omitted keeps current).
 - `view.region` — zoom to a rectangular region (`--left/--right/--top/--bottom`, mil).
 

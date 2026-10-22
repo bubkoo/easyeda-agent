@@ -1,5 +1,7 @@
 import { projectOpen, projectExport, projectImport } from './project-transfer';
-import { pcbExport3D } from './pcb-export-3d';
+import { pcbExport3D, pcbExport3DShell } from './pcb-export-3d';
+import { pcbModel3dBind, pcbModel3dList, pcbModel3dSetTransform } from './pcb-model3d';
+import { PROJECTED_STATE_KEYS } from './projected-keys';
 import { moveSchematicAttribute } from './schematic-attribute-move';
 import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { applyAndVerifyPourOrder, preparePourOrder, PourOrderError, verifyPourOrderReadback, type PourOrderVerification } from './pcb-pour-order';
@@ -1473,28 +1475,7 @@ export const schematicComponentsList: Handler = async (payload) => {
 	};
 };
 
-/**
- * PROJECTED-STATE keys must NEVER be merged into a primitive's otherProperty
- * from a library record: the platform projects them from top-level primitive
- * state (designator, uniqueId, name, addIntoBom, manufacturerId, supplierId),
- * it does not store them in otherProperty. Two failure modes, both live-verified:
- *   - `Designator`: the library record carries its own PLACEHOLDER ("C?"), and
- *     the platform syncs otherProperty.Designator INTO the primitive's
- *     designator on modify — one sync-attrs run wiped 166/166 real designators
- *     to U?/C?/RF? (each part flipping to its own library's placeholder
- *     prefix); deterministic on a quiet 6-part board.
- *   - The rest: writes are silently DROPPED (never appear in the next
- *     getState_OtherProperty), so merging them re-"fills" the same keys every
- *     run — a lying report and wasted writes, never a real backfill.
- *
- * ONE ruler for both sides: the PCB `sync-attrs` backfill and the schematic
- * place-time backfill (#186) share this set. A second copy would be a second
- * ruler, and the failure it guards against is designator-wiping.
- */
-export const PROJECTED_STATE_KEYS: ReadonlySet<string> = new Set([
-	'Designator', 'Unique ID', 'Name', 'Add into BOM',
-	'Manufacturer', 'Manufacturer Part', 'Supplier', 'Supplier Part',
-]);
+export { PROJECTED_STATE_KEYS };
 
 /**
  * Plan an otherProperty backfill: which library values may land on an instance.
@@ -15934,6 +15915,48 @@ const pcbOriginSet: Handler = async (payload) => {
 	}
 };
 
+// ─── Editor side panels (UI only) ────────────────────────────────────
+
+/**
+ * Open or close the editor's left/right side panels via eda.sys_PanelControl.
+ * UI state only — the project is never touched. The SDK exposes open/close and
+ * the lock (pin) state but NO open/closed getter, so the result reports the call
+ * that was made plus the lock state read before it; it cannot prove the panel
+ * moved. A locked panel is reported as such and never unlocked.
+ */
+const editorPanels: Handler = async (payload) => {
+	const sides = { left: optionalString(payload, 'left'), right: optionalString(payload, 'right') };
+	if (sides.left === undefined && sides.right === undefined) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Pass "left" and/or "right" as "open" or "closed".');
+	}
+	for (const [side, want] of Object.entries(sides)) {
+		if (want !== undefined && want !== 'open' && want !== 'closed') {
+			throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `"${side}" must be "open" or "closed", got "${want}".`);
+		}
+	}
+	const panel = eda.sys_PanelControl;
+	const result: Record<string, unknown> = { stateReadable: false };
+	const warnings: Array<string> = [];
+	for (const side of ['left', 'right'] as const) {
+		const want = sides[side];
+		if (want === undefined) continue;
+		let locked: boolean | null = null;
+		try { locked = side === 'left' ? await panel.isLeftPanelLocked() : await panel.isRightPanelLocked(); }
+		catch { /* reported as null */ }
+		const call = `${want === 'open' ? 'open' : 'close'}${side === 'left' ? 'Left' : 'Right'}Panel`;
+		try {
+			if (side === 'left') { if (want === 'open') panel.openLeftPanel(); else panel.closeLeftPanel(); }
+			else if (want === 'open') panel.openRightPanel(); else panel.closeRightPanel();
+		}
+		catch (err) {
+			throw edaError(err, `Failed to ${want === 'open' ? 'open' : 'close'} the ${side} panel.`);
+		}
+		if (locked) warnings.push(`The ${side} panel is locked (pinned); ${call} was sent but the host may keep it in place — not unlocking it.`);
+		result[side] = { requested: want, call, locked };
+	}
+	return { result, warnings: warnings.length ? warnings : undefined };
+};
+
 // ─── View (editor canvas) ────────────────────────────────────────────
 // All map to eda.dmt_EditorControl.*, which acts on the last-focused canvas
 // (no tabId) and works on both schematic and PCB documents. These are the
@@ -16068,6 +16091,7 @@ const HANDLERS: Record<string, Handler> = {
 	'document.open': documentOpen,
 	'document.close': documentClose,
 	'view.fit': viewFit,
+	'editor.panels': editorPanels,
 	'view.zoom': viewZoom,
 	'view.region': viewRegion,
 	'schematic.pages.list': schematicPagesList,
@@ -16219,6 +16243,10 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.save': pcbSave,
 	'pcb.export.dsn': pcbExportDsn,
 	'pcb.export.3d': pcbExport3D,
+	'pcb.model3d.list': pcbModel3dList,
+	'pcb.model3d.set_transform': pcbModel3dSetTransform,
+	'pcb.model3d.bind': pcbModel3dBind,
+	'pcb.export.3d_shell': pcbExport3DShell,
 	'pcb.import_autoroute': pcbImportAutoroute,
 	'pcb.view.filter.get': pcbViewFilterGet,
 	'pcb.snapshot': pcbSnapshot,

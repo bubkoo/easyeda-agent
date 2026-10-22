@@ -156,6 +156,7 @@ canvas, so they apply to whichever document (schematic or PCB) is active. CLI: `
 
 | Action | What |
 |---|---|
+| `editor.panels` | Open/close the editor's left/right side panels (`sys_PanelControl`); UI only; reports the call made and each panel's lock state (no open/closed getter exists) → `easyeda editor panels --left closed --right closed`. |
 | `view.fit` | Zoom to fit all primitives — 适应全部, the `K` shortcut (`zoomToAllPrimitives`). |
 | `view.zoom` | Pan/zoom to a center `x/y` and/or `scale` percent (`zoomTo`); omitted fields keep current. |
 | `view.region` | Zoom to a rectangular region `left/right/top/bottom` (`zoomToRegion`). |
@@ -235,6 +236,15 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 |---|---|
 | `schematic.export.netlist` | Export the netlist as an artifact. |
 | `schematic.export.bom` | Export BOM as csv or xlsx artifact. |
+
+### PCB 3D models (4 actions, offline-tested; writes not yet live-verified)
+
+| Action | What |
+|---|---|
+| `pcb.model3d.list` | Per-component bound model, parsed placement (size/rotation/offset XYZ, mil/deg, mapping inferred), Height, coverage counts → `easyeda pcb 3d models [--missing]`. |
+| `pcb.model3d.set_transform` | Change named placement axes of one component; single-key write with fresh readback → `easyeda pcb 3d transform`. |
+| `pcb.model3d.bind` | Bind/replace one instance's model with an existing library model, verified by `getState_Model3D` → `easyeda pcb 3d bind`. |
+| `pcb.export.3d_shell` | Export the shell designed in the official shell editor (STL/STEP/OBJ); no API creates shells → `easyeda pcb 3d export-shell`. |
 
 ### Save (1 action)
 
