@@ -3,9 +3,12 @@ package enclosure
 import (
 	"encoding/binary"
 	"math"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+var refPattern = regexp.MustCompile(`#[0-9]+`)
 
 func testSpec() *Spec {
 	return &Spec{
@@ -84,7 +87,8 @@ func TestPillarExpandsToPostsAndHoles(t *testing.T) {
 		t.Fatalf("%+v", r.Checks)
 	}
 	g := s.newGrid()
-	bottom, top := s.solids(g, "bottom"), s.solids(g, "top")
+	bottom, _ := s.solids(g, "bottom")
+	top, _ := s.solids(g, "top")
 	at := func(solid []bool, x, y, z float64) bool {
 		i, j := int((x-g.x0)/g.res), int((y-g.y0)/g.res)
 		for k := 0; k < g.nz(); k++ {
@@ -182,5 +186,159 @@ func TestPlanDerivesPillarsOpeningsHeightsAndBuildsClean(t *testing.T) {
 	}
 	if _, err := Plan(PlanInput{Board: in.Board, Components: in.Components}, PlanOptions{Mode: "board", Resolution: 0.2, Wall: 2, Floor: 2, Lid: 2, Thickness: 1.6, Standoff: 3, TopCutouts: []string{"SW9"}}); err == nil {
 		t.Fatal("unknown --top-cutout accepted")
+	}
+}
+
+func slideSpec() *Spec {
+	s := testSpec()
+	s.Type, s.Split, s.Lip = "slide", 0, Lip{}
+	s.Slide = &Slide{Side: "x+", Groove: 1, Gap: 0.2, Retain: 1}
+	return s
+}
+
+func TestSlideBoxLidSlidesOut(t *testing.T) {
+	r := mustBuild(t, slideSpec())
+	if !r.OK || r.Parts[0].Name != "box" || r.Parts[1].Name != "lid" {
+		t.Fatalf("%+v %+v", r.Checks, r.Parts)
+	}
+	lid := r.Parts[1].BBox
+	// Lid sits in the groove: z [11.8, 13.8], reaches the outer wall on x+ only.
+	if math.Abs(lid[2]-11.8) > 1e-9 || math.Abs(lid[5]-13.8) > 1e-9 || lid[3] < 22.4 || lid[0] > -0.9 {
+		t.Fatalf("lid bbox %v", lid)
+	}
+	var path bool
+	for _, c := range r.Checks {
+		path = path || (c.Name == "slide-path" && c.OK)
+	}
+	if !path {
+		t.Fatalf("slide-path check missing: %+v", r.Checks)
+	}
+	// A boss on the box rim at the entry blocks the lid.
+	s := slideSpec()
+	s.Features = []Feature{{ID: "stop", Op: "add", Part: "bottom", Shape: "rect", X: 21.5, Y: 8, W: 1, H: 4, Z: [2]float64{11, 15}}}
+	if r := mustBuild(t, s); r.OK {
+		t.Fatal("blocked slide path accepted")
+	}
+}
+
+func TestSlideRequiresRectAndNoSplit(t *testing.T) {
+	for _, mut := range []func(*Spec){
+		func(s *Spec) { s.Outline.Mode = "board" },
+		func(s *Spec) { s.Split = 5 },
+		func(s *Spec) { s.Slide.Side = "z+" },
+		func(s *Spec) { s.Slide.Groove = 3 },
+	} {
+		s := slideSpec()
+		mut(s)
+		if s.Validate() == nil {
+			t.Fatalf("invalid slide spec accepted: %+v", s.Slide)
+		}
+	}
+}
+
+func TestSnapsFormOnLipOrFail(t *testing.T) {
+	s := testSpec()
+	s.Lip.SnapDepth = 0.3
+	s.Lip.Snaps = []Snap{{ID: "S1", X: -1.5, Y: 8, W: 4}, {ID: "S2", X: 21.5, Y: 8, W: 4}}
+	r := mustBuild(t, s)
+	if !r.OK {
+		t.Fatalf("%+v", r.Checks)
+	}
+	s.Lip.Snaps = append(s.Lip.Snaps, Snap{ID: "S3", X: 10, Y: 8, W: 4})
+	if r := mustBuild(t, s); r.OK {
+		t.Fatal("snap away from the wall accepted")
+	}
+}
+
+func TestThinSpanWarns(t *testing.T) {
+	s := testSpec()
+	s.Features = []Feature{
+		{ID: "a", Op: "cut", Part: "top", Shape: "rect", X: 4, Y: 8, W: 4, H: 4, Z: [2]float64{13, 15}},
+		{ID: "b", Op: "cut", Part: "top", Shape: "rect", X: 8.3, Y: 8, W: 4, H: 4, Z: [2]float64{13, 15}},
+	}
+	r := mustBuild(t, s)
+	if !r.OK || len(r.Warnings) == 0 || !strings.Contains(strings.Join(r.Warnings, ";"), "thinner than 0.8") {
+		t.Fatalf("expected thin-span warning: %v", r.Warnings)
+	}
+	if r := mustBuild(t, testSpec()); len(r.Warnings) != 0 {
+		t.Fatalf("plain shell should not warn: %v", r.Warnings)
+	}
+}
+
+func TestPreviewAndStepEncodeEveryFace(t *testing.T) {
+	r := mustBuild(t, testSpec())
+	img, err := Preview(r.Parts, 400, 300)
+	if err != nil || len(img) < 1000 || string(img[1:4]) != "PNG" {
+		t.Fatalf("preview: %v (%d bytes)", err, len(img))
+	}
+	for _, p := range r.Parts {
+		data, err := p.STEP(p.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		if !strings.HasPrefix(text, "ISO-10303-21;") || !strings.HasSuffix(text, "END-ISO-10303-21;\n") {
+			t.Fatal("STEP framing")
+		}
+		// Every #ref must resolve to a defined entity; faces = merged polygons.
+		defined := map[string]bool{}
+		for _, line := range strings.Split(text, "\n") {
+			if i := strings.Index(line, "="); strings.HasPrefix(line, "#") && i > 0 {
+				defined[line[:i]] = true
+			}
+		}
+		for _, line := range strings.Split(text, "\n") {
+			body := line
+			if i := strings.Index(line, "="); strings.HasPrefix(line, "#") && i > 0 {
+				body = line[i+1:]
+			}
+			for _, ref := range refPattern.FindAllString(body, -1) {
+				if !defined[ref] {
+					t.Fatalf("%s: dangling %s in %q", p.Name, ref, line)
+				}
+			}
+		}
+		if got := strings.Count(text, "FACE_SURFACE("); got != len(p.mesh.faces) || got == 0 {
+			t.Fatalf("%s: %d FACE_SURFACE for %d faces", p.Name, got, len(p.mesh.faces))
+		}
+	}
+}
+
+func TestPlanSlideSnapsAndManualPillars(t *testing.T) {
+	board := []Point{{0, 0}, {30, 0}, {30, 20}, {0, 20}}
+	parts := []PlanComponent{{Ref: "U1", Side: "top", BBox: [4]float64{12, 6, 18, 12}, ModelName: "X-H1.9"},
+		{Ref: "SW1", Side: "top", BBox: [4]float64{22, 12, 26, 16}, HeightAttr: "2mm"}}
+	o := DefaultPlanOptions()
+	o.Resolution = 0.2
+	// Split shell without holes: four auto snaps that really form on the lip.
+	s, err := Plan(PlanInput{Board: board, Components: parts}, o)
+	if err != nil || len(s.Lip.Snaps) != 4 {
+		t.Fatalf("auto snaps: %v %+v", err, s.Lip.Snaps)
+	}
+	if r := mustBuild(t, s); !r.OK || len(r.Warnings) != 0 {
+		t.Fatalf("auto-snap shell: %+v %v", r.Checks, r.Warnings)
+	}
+	// Manual pillar suppresses auto snaps.
+	o.Pillars = []Pillar{{ID: "P1", X: 4, Y: 4, Screw: "M2"}}
+	s, err = Plan(PlanInput{Board: board, Components: parts}, o)
+	if err != nil || len(s.Lip.Snaps) != 0 || s.Pillars[0].Source != "manual" {
+		t.Fatalf("manual pillar: %v %+v", err, s)
+	}
+	if r := mustBuild(t, s); !r.OK {
+		t.Fatalf("pillar shell: %+v", r.Checks)
+	}
+	// Slide box with a lid opening for SW1.
+	o.Pillars, o.Type, o.TopCutouts = nil, "slide", []string{"SW1"}
+	if _, err := Plan(PlanInput{Board: board, Components: parts}, o); err == nil {
+		t.Fatal("slide with board outline accepted")
+	}
+	o.Mode = "rect"
+	s, err = Plan(PlanInput{Board: board, Components: parts}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := mustBuild(t, s)
+	if !r.OK || r.Parts[1].Name != "lid" {
+		t.Fatalf("slide plan: %+v", r.Checks)
 	}
 }

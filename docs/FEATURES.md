@@ -241,8 +241,8 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 
 | Command | What |
 |---|---|
-| `easyeda pcb enclosure plan` | Derive an editable enclosure spec from `pcb dump` + `pcb 3d models`: outline, split, lip, screw pillars at mounting holes, side openings for edge connectors, `--top-cutout` openings, `--height` overrides; every item names its source. |
-| `easyeda pcb enclosure build` | Rasterize bottom/top shells (add/cut features, M2–M6 pillars), check component/board clearance and closed 2-manifold meshes, write `bottom.stl`, `top.stl`, `manifest.json`. |
+| `easyeda pcb enclosure plan` | Derive an editable enclosure spec from `pcb dump` + `pcb 3d models`: split shell (lip, auto snaps) or `--type slide` box, screw pillars at mounting holes or `--pillar`, side openings for edge connectors, `--top-cutout` openings, `--height` overrides; every item names its source. |
+| `easyeda pcb enclosure build` | Rasterize both parts (add/cut features, M2–M6 pillars, snaps, slide groove), check component/board clearance, part overlap, snaps, slide-out path and closed 2-manifold meshes; warn on spans < 0.8 mm; write STL, `preview.png`, `manifest.json`, and STEP with `--step`. |
 
 ### PCB 3D models (4 actions, live-verified on Web 4.1.78; shell export only the no-shell path)
 

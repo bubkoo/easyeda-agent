@@ -12,13 +12,14 @@
 
 ```json
 {
-  "version": 1, "unit": "mm", "resolution": 0.1,
+  "version": 1, "unit": "mm", "resolution": 0.1, "type": "split|slide",
+  "slide": {"side": "x+", "groove": 1, "gap": 0.2, "retain": 1},
   "source": {"boardSha256": "...", "project": "ceshi", "documentUuid": "..."},
   "outline": {"mode": "board|rect", "clearance": 0.5},
   "wall": 2, "floor": 2, "lid": 2,
   "board": {"outline": [[x,y],...], "thickness": 1.6, "standoff": 3},
   "height": 20, "split": 6.6,
-  "lip": {"height": 2, "gap": 0.2},
+  "lip": {"height": 2, "gap": 0.2, "snapDepth": 0.3, "snaps": [{"id": "snap-x-", "x": -16.7, "y": 1.1, "w": 6}]},
   "pillars": [{"id": "H1", "x": 0, "y": 0, "screw": "M2", "source": "component:H1"}],
   "features": [{"id": "J1-side", "op": "cut", "part": "both", "shape": "rect",
                 "x": 0, "y": 0, "w": 10, "h": 4, "rotation": 0, "z": [6.6, 10], "source": "edge-connector:J1"}],
@@ -99,3 +100,36 @@
 `build`（0.1 mm，约 1 s）四项检查全过；独立脚本按 float32 坐标重算：下壳 2444 / 上壳 2644 个
 三角形，坏边 0，体积 3584.8 / 3939.5 mm³ 与 Go 侧一致。预览可见 SW1/SW2 开孔间只剩约 0.26 mm 隔条。
 
+
+## 推盖盒（`type: slide`）
+
+- 只支持 `outline.mode: rect`；`split`、`lip` 必须为 0/空。
+- 导槽 Z 范围 `[H - retain - lid - 2·gap, H - retain]`，在四壁内侧挖深 `groove`；入口一侧
+  （腔体以外、`slide.side` 方向）在导槽底以上全部敞开。
+- 盖板 `z ∈ [导槽底 + gap, 导槽顶 - gap]`，平面范围为腔体外扩 `groove - gap`，在入口一侧延伸到外壁。
+- `plan` 取 `groove = wall / 2`、`gap = 0.2`、`retain = 1`，总高另加 `2·gap + retain`。
+- 螺丝柱只有下壳柱 + 盲导孔（螺丝自上而下穿过 PCB）。
+- `slide-path` 检查：沿滑出方向，盖板任一格前方不得有盒体格，盖板与盒体也不得重叠。
+
+## 卡扣
+
+- 凸点：下壳止口外侧环带 `(c + (w−gap)/2, c + (w−gap)/2 + snapDepth]`，以卡扣点为中心 `w × w` 方框内，
+  `z ∈ [split + 0.25·lip.height, split + 0.75·lip.height]`。
+- 窗口：上壳同一位置贯通外壁（方框和 Z 各放大 `gap`）。不用盲槽，盲槽会让外壁只剩约 0.4 mm。
+- `plan --snaps auto`：上下壳且无螺丝柱时，取外形与包围盒四条中线的最外交点，再外推 `clearance + wall/2`。
+- 检查：每个卡扣在下壳和上壳都必须改变至少一格，否则判失败（点没落在壁上）。
+
+## 预览与 STEP
+
+- `preview.png`：等轴测 z-buffer 着色渲染，第一件原样，第二件绕 X 轴翻转后并排；纯 Go 标准库。
+- `--step`：每件一个 AP214 文件，`FACETED_BREP` 的每个面是合并后的平面多边形
+  （`FACE_SURFACE` + `PLANE` + `POLY_LOOP`）。测试校验所有引用可解析、面数等于多边形数；
+  尚未用 CAD 软件导入验证。
+
+## 真板记录 2（ceshi，2026-10-23）
+
+同一回读、`--top-cutout SW1,SW2,J1 --height J1=8.5,U1=0.9,X1=0.8`：
+- 上下壳（自动 4 个卡扣）：全部检查通过；下壳/上壳 2578/2856 三角形，体积 3592.3/3907.8 mm³，坏边 0。
+  警告：上壳 SW1/SW2 开孔间隔条细于 0.8 mm。
+- 推盖盒（`--type slide`，x+ 出盖）：总高 19.5 mm，`slide-path` 通过；盒/盖 1314/444 三角形，
+  体积 6035.3/1852.7 mm³，坏边 0。警告：入口拐角处的顶沿和盖板隔条细于 0.8 mm。

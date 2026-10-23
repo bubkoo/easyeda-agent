@@ -53,7 +53,7 @@ func TestPcbEnclosurePlanAndBuildFromBoardSnapshot(t *testing.T) {
 	if err := run(newPcbEnclosureBuildCmd(&out, io.Discard), "--spec", spec, "--out", outDir); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"bottom.stl", "top.stl", "manifest.json"} {
+	for _, f := range []string{"bottom.stl", "top.stl", "manifest.json", "preview.png"} {
 		if st, err := os.Stat(filepath.Join(outDir, f)); err != nil || st.Size() == 0 {
 			t.Fatalf("%s missing: %v", f, err)
 		}
@@ -69,5 +69,34 @@ func TestPcbEnclosurePlanAndBuildFromBoardSnapshot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(badOut, "bottom.stl")); err == nil {
 		t.Fatal("failed build wrote STL")
+	}
+}
+
+func TestPcbEnclosureSlideWithManualPillarAndStep(t *testing.T) {
+	dir := t.TempDir()
+	board := filepath.Join(dir, "board.json")
+	if err := os.WriteFile(board, []byte(`{"outline":{"source":"polygon","bbox":{"minX":0,"minY":0,"maxX":1200,"maxY":800},
+	  "points":[[0,0],[1200,0],[1200,800],[0,800]]},
+	  "components":[{"primitiveId":"a","designator":"U1","layer":1,"x":600,"y":400,"bbox":{"minX":500,"minY":300,"maxX":700,"maxY":500},"pads":[]}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec, out := filepath.Join(dir, "spec.json"), filepath.Join(dir, "enc")
+	plan := newPcbEnclosurePlanCmd(io.Discard, io.Discard)
+	plan.SetArgs([]string{"--board", board, "--type", "slide", "--slide-side", "y+", "--pillar", "3,3,M2", "--resolution", "0.2", "--out", spec})
+	if err := plan.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	build := newPcbEnclosureBuildCmd(io.Discard, io.Discard)
+	build.SetArgs([]string{"--spec", spec, "--out", out, "--step"})
+	if err := build.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"box.stl", "lid.stl", "box.step", "lid.step", "preview.png"} {
+		if st, err := os.Stat(filepath.Join(out, f)); err != nil || st.Size() == 0 {
+			t.Fatalf("%s missing: %v", f, err)
+		}
+	}
+	if _, err := parsePillarFlag("3", "M3"); err == nil {
+		t.Fatal("bad --pillar accepted")
 	}
 }

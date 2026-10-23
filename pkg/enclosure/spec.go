@@ -19,6 +19,8 @@ type Spec struct {
 	Unit       string      `json:"unit"`
 	Resolution float64     `json:"resolution"`
 	Source     *Source     `json:"source,omitempty"`
+	Type       string      `json:"type,omitempty"` // split (default): bottom + top shell; slide: box + sliding lid
+	Slide      *Slide      `json:"slide,omitempty"`
 	Outline    Outline     `json:"outline"`
 	Wall       float64     `json:"wall"`
 	Floor      float64     `json:"floor"`
@@ -54,8 +56,28 @@ type Board struct {
 }
 
 type Lip struct {
-	Height float64 `json:"height"`
-	Gap    float64 `json:"gap"`
+	Height    float64 `json:"height"`
+	Gap       float64 `json:"gap"`
+	SnapDepth float64 `json:"snapDepth,omitempty"`
+	Snaps     []Snap  `json:"snaps,omitempty"`
+}
+
+// Snap is a bump on the bottom lip's outer face that clicks into a matching
+// window through the top wall. X/Y is a point on the wall; W is the bump width along the wall.
+type Snap struct {
+	ID string  `json:"id"`
+	X  float64 `json:"x"`
+	Y  float64 `json:"y"`
+	W  float64 `json:"w"`
+}
+
+// Slide makes a push-cover box (rectangular outlines only): the walls carry a
+// groove below the rim and the lid slides in through the open Side.
+type Slide struct {
+	Side   string  `json:"side"`   // x- | x+ | y- | y+
+	Groove float64 `json:"groove"` // groove depth into the wall
+	Gap    float64 `json:"gap"`    // play between lid and groove
+	Retain float64 `json:"retain"` // rim height above the groove
 }
 
 type Pillar struct {
@@ -117,7 +139,23 @@ func Parse(data []byte) (*Spec, error) {
 }
 
 func (s *Spec) BoardBottom() float64 { return s.Floor + s.Board.Standoff }
-func (s *Spec) BoardTop() float64    { return s.BoardBottom() + s.Board.Thickness }
+func (s *Spec) slide() bool          { return s.Type == "slide" }
+
+// grooveZ is the slide groove's z range; the lid occupies it minus Gap.
+func (s *Spec) grooveZ() (float64, float64) {
+	top := s.Height - s.Slide.Retain
+	return top - s.Lid - 2*s.Slide.Gap, top
+}
+
+// CavityTop is the underside of whatever closes the box.
+func (s *Spec) CavityTop() float64 {
+	if s.slide() {
+		z0, _ := s.grooveZ()
+		return z0
+	}
+	return s.Height - s.Lid
+}
+func (s *Spec) BoardTop() float64 { return s.BoardBottom() + s.Board.Thickness }
 
 func (s *Spec) Validate() error {
 	fail := func(format string, a ...any) error { return fmt.Errorf("enclosure spec: "+format, a...) }
@@ -143,14 +181,41 @@ func (s *Spec) Validate() error {
 	if len(s.Board.Outline) < 3 || math.Abs(polygonArea(s.Board.Outline)) < 1e-6 {
 		return fail("board.outline needs a polygon with area")
 	}
-	if !(s.Split > s.Floor && s.Split+s.Lip.Height+s.Lip.Gap < s.Height-s.Lid) {
-		return fail("split must satisfy floor < split and split + lip.height + lip.gap < height - lid")
+	switch s.Type {
+	case "", "split":
+		if s.Slide != nil {
+			return fail("slide parameters need type slide")
+		}
+		if !(s.Split > s.Floor && s.Split+s.Lip.Height+s.Lip.Gap < s.Height-s.Lid) {
+			return fail("split must satisfy floor < split and split + lip.height + lip.gap < height - lid")
+		}
+		if s.Lip.Height > 0 && s.Lip.Gap >= s.Wall {
+			return fail("lip.gap must be smaller than wall")
+		}
+		if len(s.Lip.Snaps) > 0 {
+			if s.Lip.Height <= 0 || !(s.Lip.SnapDepth > 0) || s.Lip.SnapDepth >= (s.Wall-s.Lip.Gap)/2 {
+				return fail("snaps need lip.height > 0 and 0 < lip.snapDepth < (wall - lip.gap) / 2")
+			}
+		}
+	case "slide":
+		sl := s.Slide
+		if sl == nil || s.Outline.Mode != "rect" {
+			return fail("type slide needs a slide object and outline.mode rect")
+		}
+		if sl.Side != "x-" && sl.Side != "x+" && sl.Side != "y-" && sl.Side != "y+" {
+			return fail("slide.side must be x-, x+, y- or y+")
+		}
+		if !(sl.Groove > 0 && sl.Groove < s.Wall) || !(sl.Gap >= 0 && sl.Gap < sl.Groove) || !(sl.Retain > 0) {
+			return fail("slide needs 0 < groove < wall, 0 <= gap < groove and retain > 0")
+		}
+		if s.Split != 0 || s.Lip.Height != 0 || len(s.Lip.Snaps) > 0 {
+			return fail("type slide has no split, lip or snaps; set them to 0/empty")
+		}
+	default:
+		return fail("type must be split or slide")
 	}
-	if s.BoardTop() >= s.Height-s.Lid {
-		return fail("board top (%.3f) must be below the lid (%.3f)", s.BoardTop(), s.Height-s.Lid)
-	}
-	if s.Lip.Height > 0 && s.Lip.Gap >= s.Wall {
-		return fail("lip.gap must be smaller than wall")
+	if s.BoardTop() >= s.CavityTop() {
+		return fail("board top (%.3f) must be below the lid (%.3f)", s.BoardTop(), s.CavityTop())
 	}
 	ids := map[string]bool{}
 	for _, p := range s.Pillars {
@@ -162,6 +227,12 @@ func (s *Spec) Validate() error {
 			return fail("pillar %s: %s counterbore depth %.1f must be below the board bottom %.1f", p.ID, p.Screw, sz.HeadDepth, s.BoardBottom())
 		}
 		ids[p.ID] = true
+	}
+	for _, sn := range s.Lip.Snaps {
+		if sn.ID == "" || ids[sn.ID] || !(sn.W > 0) {
+			return fail("snap %q needs a unique id and w > 0", sn.ID)
+		}
+		ids[sn.ID] = true
 	}
 	for _, f := range s.Features {
 		if f.ID == "" || ids[f.ID] {

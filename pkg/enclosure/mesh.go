@@ -12,8 +12,15 @@ type vec = [3]float64
 type gridVertex [3]int
 
 type meshData struct {
-	pos  []vec
-	tris [][3]int
+	pos   []vec
+	tris  [][3]int
+	faces []face // the merged planar polygons the triangles came from
+}
+
+// face is a planar polygon (counter-clockwise around normal) in pos indices.
+type face struct {
+	ring   []int
+	normal vec
 }
 
 // quad is a merged rectangular face; corners run a→b→c→d around the face.
@@ -100,6 +107,7 @@ func mesh(g *grid, solid []bool) *meshData {
 				ring[i], ring[j] = ring[j], ring[i]
 			}
 		}
+		m.faces = append(m.faces, face{ring: ring, normal: q.normal})
 		if len(ring) == 4 {
 			m.tris = append(m.tris, [3]int{ring[0], ring[1], ring[2]}, [3]int{ring[0], ring[2], ring[3]})
 			continue

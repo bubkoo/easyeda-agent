@@ -38,6 +38,7 @@ Neither command talks to EasyEDA; the enclosure is not an EDA shell object.`,
 func newPcbEnclosurePlanCmd(stdout, stderr io.Writer) *cobra.Command {
 	var boardPath, modelsPath, out string
 	var heights map[string]string
+	var pillars []string
 	o := enclosure.DefaultPlanOptions()
 	c := &cobra.Command{
 		Use:   "plan",
@@ -57,6 +58,17 @@ warnings — fix them with --height REF=mm so the total height is recomputed. Re
 			}
 			if _, err := os.Stat(out); err == nil {
 				return fmt.Errorf("--out %s already exists; choose a new file", out)
+			}
+			if o.Type == "slide" && !cmd.Flags().Changed("mode") {
+				o.Mode = "rect"
+			}
+			for i, raw := range pillars {
+				p, err := parsePillarFlag(raw, o.Screw)
+				if err != nil {
+					return err
+				}
+				p.ID = fmt.Sprintf("P%d", i+1)
+				o.Pillars = append(o.Pillars, p)
 			}
 			o.Heights = map[string]float64{}
 			for ref, v := range heights {
@@ -106,6 +118,10 @@ warnings — fix them with --height REF=mm so the total height is recomputed. Re
 	f.Float64Var(&o.EdgeMargin, "edge-margin", o.EdgeMargin, "max distance from the board edge for a connector opening mm")
 	f.Float64Var(&o.CutoutMargin, "cutout-margin", o.CutoutMargin, "extra size around openings mm")
 	f.StringVar(&o.Screw, "screw", o.Screw, "pillar screw when the footprint does not say: M2|M2.5|M3|M4|M5|M6")
+	f.StringVar(&o.Type, "type", o.Type, "split (bottom + top shell) or slide (box + sliding lid, rectangular)")
+	f.StringVar(&o.SlideSide, "slide-side", o.SlideSide, "side the slide lid comes out of: x-|x+|y-|y+")
+	f.StringArrayVar(&pillars, "pillar", nil, "add a screw pillar at board mm coordinates: X,Y[,M3] (repeatable)")
+	f.StringVar(&o.Snaps, "snaps", o.Snaps, "auto (four lip snaps on split shells without pillars) or none")
 	f.StringToStringVar(&heights, "height", nil, "component height overrides in mm, e.g. J1=8.5,U1=0.9")
 	f.StringSliceVar(&o.TopCutouts, "top-cutout", nil, "designators that get an opening in the lid (or floor for bottom parts)")
 	return c
@@ -225,14 +241,17 @@ func readModels3D(path string) (map[string]map[string]any, error) {
 
 func newPcbEnclosureBuildCmd(stdout, stderr io.Writer) *cobra.Command {
 	var specPath, out string
+	var step bool
 	c := &cobra.Command{
 		Use:   "build",
 		Short: "Check an enclosure spec and write bottom.stl / top.stl",
 		Long: `Validate spec.json, rasterize both shells, check that no component keep-out
 box or the board slab intersects the shell and that each mesh volume matches
-its raster, then write bottom.stl, top.stl and manifest.json into a NEW --out
-directory. On any failed check only manifest.json is written and the command
-exits non-zero.`,
+its raster, then write <part>.stl (bottom/top, or box/lid for a slide box),
+preview.png and manifest.json into a NEW --out directory; --step also writes
+<part>.step (faceted B-rep). Lip snaps, part overlap and the slide-out path are
+checked too; spans thinner than 0.8 mm are warnings. On any failed check only
+manifest.json and preview.png are written and the command exits non-zero.`,
 		Args:    cobra.NoArgs,
 		Example: `  easyeda pcb enclosure build --spec spec.json --out ./enclosure`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -266,7 +285,22 @@ exits non-zero.`,
 				if err := os.WriteFile(filepath.Join(out, name), p.STL, 0o644); err != nil {
 					return err
 				}
-				files[p.Name] = sha256Hex(p.STL)
+				files[name] = sha256Hex(p.STL)
+				if step {
+					data, err := p.STEP(p.Name)
+					if err != nil {
+						return err
+					}
+					if err := os.WriteFile(filepath.Join(out, p.Name+".step"), data, 0o644); err != nil {
+						return err
+					}
+					files[p.Name+".step"] = sha256Hex(data)
+				}
+			}
+			if img, err := enclosure.Preview(res.Parts, 1000, 620); err != nil {
+				return err
+			} else if err := os.WriteFile(filepath.Join(out, "preview.png"), img, 0o644); err != nil {
+				return err
 			}
 			status := "built"
 			if !res.OK {
@@ -295,5 +329,23 @@ exits non-zero.`,
 	}
 	c.Flags().StringVar(&specPath, "spec", "", "enclosure spec.json (required)")
 	c.Flags().StringVar(&out, "out", "", "new output directory (required)")
+	c.Flags().BoolVar(&step, "step", false, "also write <part>.step (faceted B-rep, not yet verified in a CAD tool)")
 	return c
+}
+
+// parsePillarFlag reads "X,Y[,Mn]" in board millimetres.
+func parsePillarFlag(raw, screw string) (enclosure.Pillar, error) {
+	parts := strings.Split(raw, ",")
+	if len(parts) < 2 || len(parts) > 3 {
+		return enclosure.Pillar{}, fmt.Errorf("--pillar %q: want X,Y[,M3]", raw)
+	}
+	x, ex := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	y, ey := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if ex != nil || ey != nil {
+		return enclosure.Pillar{}, fmt.Errorf("--pillar %q: X and Y must be numbers in mm", raw)
+	}
+	if len(parts) == 3 {
+		screw = strings.ToUpper(strings.TrimSpace(parts[2]))
+	}
+	return enclosure.Pillar{X: x, Y: y, Screw: screw, Source: "manual"}, nil
 }
