@@ -106,7 +106,7 @@ easyeda pcb enclosure build --spec spec.json --out ./enclosure
 - `plan` 的 warnings 列出用默认高度的器件：查规格书后用 `--height REF=mm` 重跑，别手改总高。
 - 没有安装孔时用 `--pillar X,Y[,M3]` 加螺丝柱（位置须避开器件，`build` 会检查）；都不加时上下壳自动放 4 个卡扣。
 - `--type slide` 生成推盖盒（需矩形外形，`--slide-side` 选出盖方向）；`build` 会检查盖板能否滑出。
-- 交付前打开 `preview.png` 看一眼；warnings 里细于 0.8 mm 的结构要调整参数。`--step` 另出 STEP（未经 CAD 验证）。
+- 交付前打开 `preview.png` 看一眼；靠得太近的推导开孔会自动合并，warnings 里仍有细于 0.8 mm 的结构就调整参数。`--step` 另出 STEP（未经 CAD 验证）。
 - 挖槽/开孔/凸台统一写在 `features[]`：平面形状 + `z` 范围，`op` 为 `add` 或 `cut`。
 - `build` 失败只写 `manifest.json`；交付前看预览，注意相邻开孔间的细小隔条。
 

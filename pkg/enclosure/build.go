@@ -192,21 +192,24 @@ func (s *Spec) baseSolid(part string, sd, x, y, z float64) bool {
 	return sd > c
 }
 
-// slideGeometry: beyond reports whether (x, y) lies past the cavity on the
+// slideGeometry: beyond reports whether (x, y) lies past the shape on the
 // entry side; lateral whether it is within the groove width across that side.
+// The entry starts at the shape edge, not the cavity edge, so the rounded
+// outer corners are cut away whole and the side walls end at full thickness
+// instead of tapering into slivers.
 func (s *Spec) slideGeometry(x, y float64) (beyond bool, lateral func(reach float64) bool) {
 	b, c := bboxOf(s.shape()), s.Outline.Clearance
 	along := y
 	lo, hi := b[1], b[3]
 	switch s.Slide.Side {
 	case "x+":
-		beyond = x > b[2]+c
+		beyond = x > b[2]
 	case "x-":
-		beyond = x < b[0]-c
+		beyond = x < b[0]
 	case "y+":
-		beyond, along, lo, hi = y > b[3]+c, x, b[0], b[2]
+		beyond, along, lo, hi = y > b[3], x, b[0], b[2]
 	default:
-		beyond, along, lo, hi = y < b[1]-c, x, b[0], b[2]
+		beyond, along, lo, hi = y < b[1], x, b[0], b[2]
 	}
 	return beyond, func(reach float64) bool { return along >= lo-c-reach && along <= hi+c+reach }
 }

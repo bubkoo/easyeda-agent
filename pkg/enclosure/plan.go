@@ -181,6 +181,7 @@ func Plan(in PlanInput, o PlanOptions) (*Spec, error) {
 			s.Features = append(s.Features, f)
 		}
 	}
+	s.Features = mergeCloseOpenings(s.Features)
 	sort.Strings(defaulted)
 	if len(defaulted) > 0 {
 		s.Warnings = append(s.Warnings, fmt.Sprintf("height unknown, default %.1f mm used for: %s — set components[].height and heightSource \"spec\"", o.DefaultHeight, strings.Join(defaulted, ", ")))
@@ -265,4 +266,38 @@ func autoSnaps(shape []Point, reach float64) []Snap {
 			Snap{ID: "snap-y+", X: round3(mx), Y: round3(hi + reach), W: round3(w)})
 	}
 	return snaps
+}
+
+// mergeCloseOpenings joins derived rectangular cuts on the same part and z
+// range whose gap would leave a bar thinner than MinFeature: the bar cannot be
+// printed, so one opening over both is the honest result.
+func mergeCloseOpenings(fs []Feature) []Feature {
+	rect := func(f Feature) [4]float64 { return [4]float64{f.X - f.W/2, f.Y - f.H/2, f.X + f.W/2, f.Y + f.H/2} }
+	mergeable := func(f Feature) bool { return f.Op == "cut" && f.Shape == "rect" && f.Rotation == 0 }
+	for merged := true; merged; {
+		merged = false
+	scan:
+		for i := range fs {
+			for j := i + 1; j < len(fs); j++ {
+				a, b := fs[i], fs[j]
+				if !mergeable(a) || !mergeable(b) || a.Part != b.Part || a.Z != b.Z {
+					continue
+				}
+				ra, rb := rect(a), rect(b)
+				dx := math.Max(0, math.Max(ra[0]-rb[2], rb[0]-ra[2]))
+				dy := math.Max(0, math.Max(ra[1]-rb[3], rb[1]-ra[3]))
+				if math.Hypot(dx, dy) >= MinFeature {
+					continue
+				}
+				u := [4]float64{math.Min(ra[0], rb[0]), math.Min(ra[1], rb[1]), math.Max(ra[2], rb[2]), math.Max(ra[3], rb[3])}
+				a.ID, a.Source = a.ID+"+"+b.ID, a.Source+"+"+b.Source
+				a.X, a.Y, a.W, a.H = round3((u[0]+u[2])/2), round3((u[1]+u[3])/2), round3(u[2]-u[0]), round3(u[3]-u[1])
+				fs[i] = a
+				fs = append(fs[:j], fs[j+1:]...)
+				merged = true
+				break scan
+			}
+		}
+	}
+	return fs
 }

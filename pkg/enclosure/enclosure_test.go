@@ -198,7 +198,7 @@ func slideSpec() *Spec {
 
 func TestSlideBoxLidSlidesOut(t *testing.T) {
 	r := mustBuild(t, slideSpec())
-	if !r.OK || r.Parts[0].Name != "box" || r.Parts[1].Name != "lid" {
+	if !r.OK || r.Parts[0].Name != "box" || r.Parts[1].Name != "lid" || len(r.Warnings) != 0 {
 		t.Fatalf("%+v %+v", r.Checks, r.Parts)
 	}
 	lid := r.Parts[1].BBox
@@ -340,5 +340,26 @@ func TestPlanSlideSnapsAndManualPillars(t *testing.T) {
 	r := mustBuild(t, s)
 	if !r.OK || r.Parts[1].Name != "lid" {
 		t.Fatalf("slide plan: %+v", r.Checks)
+	}
+}
+
+func TestPlanMergesOpeningsThatWouldLeaveAThinBar(t *testing.T) {
+	board := []Point{{0, 0}, {30, 0}, {30, 20}, {0, 20}}
+	parts := []PlanComponent{
+		{Ref: "SW1", Side: "top", BBox: [4]float64{4, 8, 8, 12}, HeightAttr: "2mm"},
+		{Ref: "SW2", Side: "top", BBox: [4]float64{9.2, 8, 13.2, 12}, HeightAttr: "2mm"}, // openings 0.2 mm apart
+		{Ref: "SW3", Side: "top", BBox: [4]float64{20, 8, 24, 12}, HeightAttr: "2mm"},
+	}
+	o := DefaultPlanOptions()
+	o.Resolution, o.TopCutouts = 0.2, []string{"SW1", "SW2", "SW3"}
+	s, err := Plan(PlanInput{Board: board, Components: parts}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Features) != 2 || s.Features[0].ID != "SW1-opening+SW2-opening" || math.Abs(s.Features[0].W-10.2) > 1e-9 {
+		t.Fatalf("features %+v", s.Features)
+	}
+	if r := mustBuild(t, s); !r.OK || len(r.Warnings) != 0 {
+		t.Fatalf("merged openings should build clean: %+v %v", r.Checks, r.Warnings)
 	}
 }
