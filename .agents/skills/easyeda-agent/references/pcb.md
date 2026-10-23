@@ -92,6 +92,22 @@ easyeda pcb export-3d --format step --project <project-uuid> --window <edadesk-w
 STEP 仅能包含从 STEP 导入的元件模型。导出后独立核对板体、器件、朝向、缺项及可旋转缩放；
 不以文件非空、命令成功或所有模型已绑定代替显示与完整性验证。
 
+### 参数化外壳（离线生成 STL）
+
+EDA 内置 3D 外壳没有创建接口，外壳由 CLI 离线生成，不写回工程：
+
+```sh
+easyeda pcb dump --project <project> --out board.json
+easyeda pcb 3d models --project <project> > models.json
+easyeda pcb enclosure plan --board board.json --models models.json --top-cutout SW1 --height J1=8.5 --out spec.json
+easyeda pcb enclosure build --spec spec.json --out ./enclosure
+```
+
+- `plan` 的 warnings 列出用默认高度的器件：查规格书后用 `--height REF=mm` 重跑，别手改总高。
+- 没有安装孔时要在 `spec.json` 的 `pillars[]` 手加螺丝柱（位置须避开器件，`build` 会检查）。
+- 挖槽/开孔/凸台统一写在 `features[]`：平面形状 + `z` 范围，`op` 为 `add` 或 `cut`。
+- `build` 失败只写 `manifest.json`；交付前看预览，注意相邻开孔间的细小隔条。
+
 ### 器件 3D 模型核对与修正
 
 ```sh

@@ -14,7 +14,7 @@
 | 改器件实例绑定的模型 | `otherProperty["3D Model"]`、`["3D Model Title"]` | 无专用接口；经 `otherProperty` 写入，现场已验（含导出几何） |
 | 整板 OBJ/STEP 导出 | `pcb_ManufactureData.get3DFile`（beta） | 已实现（`pcb export-3d`） |
 | 3D 外壳导出 | `pcb_ManufactureData.get3DShellFile`（beta） | 可调用；未设计外壳时返回空 |
-| 3D 外壳设计 | 外壳层 53–55 | 不支持：线、填充、区域接口都不接受外壳层 |
+| 3D 外壳设计 | 外壳层 53–55 | 不支持：类型不含外壳层，现场画线/填充均被宿主拒绝；改为离线自研，见 [参数化外壳](pcb-enclosure-design.md) |
 | 3D 外壳下单 | `place3DShellOrder` | 不做：只有交互式检查，且属于下单 |
 | 3D 预览截图 | `PCB_3D_PREVIEW` 标签 + `getCurrentRenderedAreaImage` | 规划：没有打开 3D 预览的接口，只能截已打开的标签 |
 | 光追渲染配置 | `pcb_RayTracerEngine`（beta） | 暂不做：配置是无类型对象 |
