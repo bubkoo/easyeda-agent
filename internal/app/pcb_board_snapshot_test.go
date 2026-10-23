@@ -33,7 +33,8 @@ func TestParseBoardComponents_FullPose(t *testing.T) {
 			map[string]any{"primitiveId": "pad1", "padNumber": "1", "net": "GND", "layer": float64(1),
 				"x": 85.0, "y": 185.0, "width": 20.0, "height": 12.0, "rotation": 0.0, "padType": float64(0)},
 			map[string]any{"primitiveId": "pad2", "padNumber": "2", "net": "SDA", "layer": float64(12),
-				"x": 115.0, "y": 215.0}, // polygon pad：连接器不给 width/height
+				"x": 115.0, "y": 215.0, // polygon pad：连接器不给 width/height
+				"hole": []any{"ROUND", 4.3308, 4.3308}, "metallization": true},
 		},
 	})
 
@@ -65,6 +66,9 @@ func TestParseBoardComponents_FullPose(t *testing.T) {
 	}
 	if len(c.Pads) != 2 {
 		t.Fatalf("want 2 pads, got %d", len(c.Pads))
+	}
+	if h, ok := c.Pads[1].Hole.([]any); !ok || len(h) != 3 || c.Pads[1].Metallization == nil || !*c.Pads[1].Metallization || c.Pads[0].Hole != nil {
+		t.Errorf("drill/plating must survive parsing: %+v / %+v", c.Pads[1].Hole, c.Pads[0].Hole)
 	}
 	// 测不到尺寸的焊盘必须保持 0（"未知"），绝不能猜一个值——猜出来的铜箔尺寸
 	// 会让短路判定产生假阳/假阴。

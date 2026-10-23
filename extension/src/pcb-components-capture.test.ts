@@ -30,7 +30,7 @@ function pad(overrides: Record<string, unknown> = {}): any {
 		getState_Net: () => 'SIG', getState_Layer: () => 1,
 		getState_X: () => 10, getState_Y: () => 20, getState_Rotation: () => 0,
 		getState_PadType: () => 0, getState_Pad: () => ['RECT', 40, 10, 0],
-		getState_SpecialPad: () => [], ...overrides,
+		getState_SpecialPad: () => [], getState_Hole: () => null, ...overrides,
 	};
 }
 
@@ -192,4 +192,15 @@ test('PCB pad capture preserves SDK ELLIPSE and POLYGON tuples without unit gues
 	const { result }: any = await runAction('pcb.components.list', { includePads: true });
 	assert.equal(result.coverage.pads.geometryAvailable, 2);
 	assert.equal(result.partial, false, 'unsupported extent derivation does not erase available raw geometry');
+});
+
+test('PCB pad capture keeps the raw drill tuple and plating; an unreadable drill stays unknown', () => {
+	const drilled: any = serializePcbPad(pad({ getState_Layer: () => 12, getState_Hole: () => ['ROUND', 4.3308, 4.3308], getState_Metallization: () => true }));
+	assert.deepEqual(drilled.hole, ['ROUND', 4.3308, 4.3308]);
+	assert.equal(drilled.metallization, true);
+	assert.equal(drilled.availability.hole, 'available');
+	const unknown: any = serializePcbPad(pad({ getState_Hole: () => { throw new Error('no drill'); } }));
+	assert.equal(unknown.availability.hole, 'unavailable');
+	assert.equal(unknown.captureErrors.hole.code, 'getter-threw');
+	assert.equal(unknown.metallization, undefined);
 });

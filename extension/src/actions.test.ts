@@ -60,12 +60,14 @@ test('PCB pad serialization preserves source shape/rotation and computes shape-a
 		getState_PadType: () => 0,
 		getState_Pad: () => ['RECT', 40, 10, 0],
 		getState_SpecialPad: () => [],
+		getState_Hole: () => null,
 	};
 	const got: any = serializePcbPad(pad);
 	assert.deepEqual(got.shape, ['RECT', 40, 10, 0]);
 	assert.equal(got.rotation, 45);
 	assert.deepEqual(got.specialPad, []);
-	assert.deepEqual(got.availability, { shape: 'available', specialPad: 'available' });
+	assert.deepEqual(got.availability, { shape: 'available', specialPad: 'available', hole: 'available' });
+	assert.equal(got.hole, null);
 	assert.equal(got.specialPadPresent, false);
 	assert.ok(Math.abs(got.width - 35.3553390593) < 1e-6);
 	assert.ok(Math.abs(got.height - 35.3553390593) < 1e-6);

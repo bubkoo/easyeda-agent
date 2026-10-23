@@ -104,6 +104,8 @@ easyeda pcb enclosure build --spec spec.json --out ./enclosure
 ```
 
 - `plan` 的 warnings 列出用默认高度的器件：查规格书后用 `--height REF=mm` 重跑，别手改总高。
+- 螺丝柱只从真实钻孔识别：圆孔 ≥ 2.1 mm（按孔径选 M2–M6）且该器件焊盘无信号网络（空或 GND）。
+  位号不参与判断（很多板把排针叫 H1）；回读缺孔数据时只按 HOLE/MOUNT 封装名兜底并给警告。
 - 没有安装孔时用 `--pillar X,Y[,M3]` 加螺丝柱（位置须避开器件，`build` 会检查）；都不加时上下壳自动放 4 个卡扣。
 - `--type slide` 生成推盖盒（需矩形外形，`--slide-side` 选出盖方向）；`build` 会检查盖板能否滑出。
 - 交付前打开 `preview.png` 看一眼；靠得太近的推导开孔会自动合并，warnings 里仍有细于 0.8 mm 的结构就调整参数。`--step` 另出 STEP（未经 CAD 验证）。

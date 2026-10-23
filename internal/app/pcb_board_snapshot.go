@@ -55,6 +55,8 @@ type boardPad struct {
 	PadType           int               `json:"padType,omitempty"` // 0=NORMAL 1=TEST 2=MARK_POINT
 	Shape             any               `json:"shape,omitempty"`
 	SpecialPad        any               `json:"specialPad,omitempty"`
+	Hole              any               `json:"hole,omitempty"` // raw drill tuple, 10 mil units; see enclosure.PadHoleMM
+	Metallization     *bool             `json:"metallization,omitempty"`
 	SpecialPadPresent *bool             `json:"specialPadPresent,omitempty"`
 	Availability      map[string]string `json:"availability,omitempty"`
 	CaptureErrors     map[string]any    `json:"captureErrors,omitempty"`
@@ -762,6 +764,10 @@ func parseBoardComponents(result map[string]any) []boardComp {
 				// an axis-aligned envelope and cannot prove complex pad clearance.
 				p.Shape = pm["shape"]
 				p.SpecialPad = pm["specialPad"]
+				p.Hole = pm["hole"]
+				if m, ok := pm["metallization"].(bool); ok {
+					p.Metallization = &m
+				}
 				if present, known := pm["specialPadPresent"].(bool); known {
 					p.SpecialPadPresent = &present
 				}

@@ -91,7 +91,9 @@ func TestPcb3DBindAndShellRequireTargets(t *testing.T) {
 		want string
 	}{
 		{func() *cobra.Command { return newPcb3DBindCmd(&appConfig{}, new(string), io.Discard, io.Discard) }, []string{"--ref", "U1"}, "--model"},
-		{func() *cobra.Command { return newPcb3DExportShellCmd(&appConfig{}, new(string), io.Discard, io.Discard) }, []string{"--out", "x.stl"}, "--window"},
+		{func() *cobra.Command {
+			return newPcb3DExportShellCmd(&appConfig{}, new(string), io.Discard, io.Discard)
+		}, []string{"--out", "x.stl"}, "--window"},
 	} {
 		c := tc.cmd()
 		c.SetArgs(tc.args)

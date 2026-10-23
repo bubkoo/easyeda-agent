@@ -19,6 +19,38 @@ type PlanComponent struct {
 	AnchorY    float64
 	ModelName  string // bound 3D model name, e.g. R0402_L1.0-W0.5-H0.4
 	HeightAttr string // otherProperty Height, e.g. "1.3mm"
+	Pads       []PlanPad
+}
+
+// PlanPad is one pad of a component; HoleMM is 0 without a drill and
+// HoleKnown false when the readback carried no drill information.
+type PlanPad struct {
+	Number    string
+	X, Y      float64 // mm
+	Net       string
+	HoleMM    float64
+	HoleKnown bool
+}
+
+// PadHoleMM converts the host's raw drill tuple (["ROUND", d, d] in 10 mil
+// units) to a round-hole diameter in mm. padMinMil, when > 0, is the pad's
+// smaller side in mil: a drill must be smaller than its pad, which is how the
+// 10 mil unit was established (a 66.9 mil header pad reads 4.3308 = 1.1 mm).
+// ok is false for slots, malformed tuples or an implausible size.
+func PadHoleMM(raw any, padMinMil float64) (mm float64, ok bool) {
+	t, isList := raw.([]any)
+	if !isList || len(t) < 2 || t[0] != "ROUND" {
+		return 0, false
+	}
+	d, isNum := t[1].(float64)
+	if !isNum || !(d > 0) {
+		return 0, false
+	}
+	mil := d * 10
+	if padMinMil > 0 && mil >= padMinMil {
+		return 0, false
+	}
+	return mil * 0.0254, true
 }
 
 type PlanInput struct {
@@ -59,7 +91,6 @@ var (
 	modelHeightRe = regexp.MustCompile(`(?i)-H(\d+(?:\.\d+)?)`)
 	attrHeightRe  = regexp.MustCompile(`^\s*(\d+(?:\.\d+)?)\s*(mm)?\s*$`)
 	screwRe       = regexp.MustCompile(`(?i)M(2\.5|2|3|4|5|6)(?:[^0-9.]|$)`)
-	holeRefRe     = regexp.MustCompile(`^(MH|H)\d+$`)
 	connectorRe   = regexp.MustCompile(`^(J|CN|USB|CON|P)\d+$`)
 	userInputRe   = regexp.MustCompile(`^(SW|KEY|BTN|LED|D)\d+$`)
 )
@@ -79,9 +110,58 @@ func componentHeight(c PlanComponent, fallback float64) (float64, string) {
 	return fallback, "default"
 }
 
-func isMountingHole(c PlanComponent) bool {
+var groundNetRe = regexp.MustCompile(`(?i)^$|GND|^PE$|EARTH|SHIELD|CHASSIS`)
+
+// screwFor picks the largest screw that passes a round hole of d mm.
+func screwFor(d float64) (string, bool) {
+	best := ""
+	for _, n := range []struct {
+		name string
+		size float64
+	}{{"M2", 2}, {"M2.5", 2.5}, {"M3", 3}, {"M4", 4}, {"M5", 5}, {"M6", 6}} {
+		if n.size <= d-0.1 {
+			best = n.name
+		}
+	}
+	return best, best != ""
+}
+
+// mountingHoles returns the screw pillars a component stands for. With drill
+// data, a mounting hole is a round hole that passes at least an M2 screw on a
+// part whose pads carry no signal net (empty or ground); a part with no drill
+// data falls back to a HOLE/MOUNT footprint name at its anchor (size unknown).
+// Designators are never used: boards name pin headers H1, H2…
+func mountingHoles(c PlanComponent, haveDrills bool, fallbackScrew string) []Pillar {
+	if haveDrills {
+		for _, p := range c.Pads {
+			if !groundNetRe.MatchString(p.Net) {
+				return nil
+			}
+		}
+		var out []Pillar
+		for _, p := range c.Pads {
+			screw, ok := screwFor(p.HoleMM)
+			if !p.HoleKnown || !ok {
+				continue
+			}
+			id := c.Ref
+			if len(c.Pads) > 1 {
+				id = c.Ref + "-" + p.Number
+			}
+			out = append(out, Pillar{ID: id, X: round3(p.X), Y: round3(p.Y), Screw: screw,
+				Source: fmt.Sprintf("mounting-hole:%s (drill %.2f mm)", c.Ref, p.HoleMM)})
+		}
+		return out
+	}
 	fp := strings.ToUpper(c.Footprint)
-	return holeRefRe.MatchString(c.Ref) || strings.Contains(fp, "HOLE") || strings.Contains(fp, "MOUNT")
+	if !strings.Contains(fp, "HOLE") && !strings.Contains(fp, "MOUNT") {
+		return nil
+	}
+	screw := fallbackScrew
+	if m := screwRe.FindStringSubmatch(c.Footprint); m != nil {
+		screw = "M" + m[1]
+	}
+	return []Pillar{{ID: c.Ref, X: c.AnchorX, Y: c.AnchorY, Screw: screw, Source: "footprint-name:" + c.Ref + " (drill unknown)"}}
 }
 
 // Plan derives an editable enclosure spec from a board readback. Every derived
@@ -105,14 +185,19 @@ func Plan(in PlanInput, o PlanOptions) (*Spec, error) {
 	maxTop, maxBottom := 0.0, 0.0
 	var defaulted []string
 	seen := map[string]bool{}
+	haveDrills := false
+	for _, c := range in.Components {
+		for _, p := range c.Pads {
+			haveDrills = haveDrills || p.HoleKnown
+		}
+	}
+	if !haveDrills {
+		s.Warnings = append(s.Warnings, "board readback has no drill data (dump with a connector that reports pad holes); mounting holes guessed from HOLE/MOUNT footprint names only")
+	}
 	for _, c := range in.Components {
 		seen[c.Ref] = true
-		if isMountingHole(c) {
-			screw := o.Screw
-			if m := screwRe.FindStringSubmatch(c.Footprint); m != nil {
-				screw = "M" + m[1]
-			}
-			s.Pillars = append(s.Pillars, Pillar{ID: c.Ref, X: c.AnchorX, Y: c.AnchorY, Screw: screw, Source: "mounting-hole:" + c.Ref})
+		if holes := mountingHoles(c, haveDrills, o.Screw); len(holes) > 0 {
+			s.Pillars = append(s.Pillars, holes...)
 			continue
 		}
 		h, src := componentHeight(c, o.DefaultHeight)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -178,6 +179,15 @@ func enclosurePlanInput(boardPath, modelsPath string) (enclosure.PlanInput, erro
 		pc := enclosure.PlanComponent{Ref: c.Designator, Footprint: footprintName(c.Footprint), Side: side,
 			BBox:    [4]float64{c.BBox.MinX * mmPerMil, c.BBox.MinY * mmPerMil, c.BBox.MaxX * mmPerMil, c.BBox.MaxY * mmPerMil},
 			AnchorX: c.X * mmPerMil, AnchorY: c.Y * mmPerMil}
+		for _, p := range c.Pads {
+			pp := enclosure.PlanPad{Number: p.Number, X: p.X * mmPerMil, Y: p.Y * mmPerMil, Net: p.Net,
+				HoleKnown: p.Availability["hole"] == "available"}
+			if pp.HoleKnown && p.Hole != nil {
+				padMin := math.Min(p.W, p.H)
+				pp.HoleMM, _ = enclosure.PadHoleMM(p.Hole, padMin)
+			}
+			pc.Pads = append(pc.Pads, pp)
+		}
 		if m := models[c.Designator]; m != nil {
 			if model, ok := m["model"].(map[string]any); ok {
 				pc.ModelName, _ = model["name"].(string)

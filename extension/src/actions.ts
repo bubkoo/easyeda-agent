@@ -415,6 +415,18 @@ export function serializePcbPad(pad: PcbPad): Record<string, unknown> {
 	const captureErrors: Record<string, PcbCaptureError> = {};
 	if (geometry.shape.error) captureErrors.shape = geometry.shape.error;
 	if (geometry.specialPad.error) captureErrors.specialPad = geometry.specialPad.error;
+	// Drill as the host reports it: [type, size...] in 10 mil units (a 2.54 mm
+	// header reads ["ROUND", 4.3308, 4.3308] under a 66.9 mil pad); null = no
+	// hole. Kept raw; consumers convert in one place (pkg/enclosure).
+	const hole = capturePcbValue(
+		typeof pad.getState_Hole === 'function' ? () => pad.getState_Hole() : undefined,
+		'getState_Hole', value => Array.isArray(value) && typeof value[0] === 'string', true,
+	);
+	const metallization = capturePcbValue(
+		typeof pad.getState_Metallization === 'function' ? () => pad.getState_Metallization() : undefined,
+		'getState_Metallization', value => typeof value === 'boolean',
+	);
+	if (hole.error) captureErrors.hole = hole.error;
 	const rotation = pad.getState_Rotation();
 	const record: Record<string, unknown> = {
 		primitiveId: pad.getState_PrimitiveId(),
@@ -429,10 +441,12 @@ export function serializePcbPad(pad: PcbPad): Record<string, unknown> {
 		// clearance consumers; connectivity evidence must reason from shape.
 		shape: geometry.shape.value,
 		specialPad: geometry.specialPad.value,
-		availability: { shape: geometry.shape.availability, specialPad: geometry.specialPad.availability },
+		hole: hole.value,
+		availability: { shape: geometry.shape.availability, specialPad: geometry.specialPad.availability, hole: hole.availability },
 		captureErrors,
-		captureSources: { shape: 'getState_Pad', specialPad: 'getState_SpecialPad' },
+		captureSources: { shape: 'getState_Pad', specialPad: 'getState_SpecialPad', hole: 'getState_Hole' },
 	};
+	if (metallization.availability === 'available') record.metallization = metallization.value;
 	if (geometry.specialPad.availability === 'available') record.specialPadPresent = Array.isArray(geometry.specialPad.value) && geometry.specialPad.value.length > 0;
 	const ext = capturedPcbPadExtent(geometry, rotation);
 	if (ext) {

@@ -177,7 +177,7 @@ func TestPlanDerivesPillarsOpeningsHeightsAndBuildsClean(t *testing.T) {
 	if ids["J1-side"].Source != "edge-connector:J1" || ids["SW1-opening"].Part != "top" || len(s.Features) != 2 {
 		t.Fatalf("features %+v", s.Features)
 	}
-	if len(s.Candidates) != 1 || !strings.HasPrefix(s.Candidates[0], "SW2") || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "X1") {
+	if len(s.Candidates) != 1 || !strings.HasPrefix(s.Candidates[0], "SW2") || len(s.Warnings) != 2 || !strings.Contains(strings.Join(s.Warnings, ";"), "X1") {
 		t.Fatalf("candidates %v warnings %v", s.Candidates, s.Warnings)
 	}
 	r := mustBuild(t, s)
@@ -361,5 +361,48 @@ func TestPlanMergesOpeningsThatWouldLeaveAThinBar(t *testing.T) {
 	}
 	if r := mustBuild(t, s); !r.OK || len(r.Warnings) != 0 {
 		t.Fatalf("merged openings should build clean: %+v %v", r.Checks, r.Warnings)
+	}
+}
+
+func TestPadHoleMMUsesTenMilUnitsAndRejectsImplausibleDrills(t *testing.T) {
+	if mm, ok := PadHoleMM([]any{"ROUND", 4.3308, 4.3308}, 66.9); !ok || math.Abs(mm-1.1) > 1e-3 {
+		t.Fatalf("header drill %.4f %v", mm, ok)
+	}
+	for _, raw := range []any{nil, []any{"SLOT", 4.0, 10.0}, []any{"ROUND", "x"}, []any{"ROUND", 7.0}} {
+		if _, ok := PadHoleMM(raw, 66.9); ok { // 70 mil drill in a 66.9 mil pad is impossible
+			t.Fatalf("accepted %v", raw)
+		}
+	}
+}
+
+func TestMountingHolesComeFromDrillsNotDesignators(t *testing.T) {
+	drill := func(n, net string, x, mm float64) PlanPad {
+		return PlanPad{Number: n, X: x, Y: 5, Net: net, HoleMM: mm, HoleKnown: true}
+	}
+	parts := []PlanComponent{
+		{Ref: "H1", Side: "top", BBox: [4]float64{2, 4, 6, 6}, HeightAttr: "8.5mm", // 2-pin header named H1
+			Pads: []PlanPad{drill("1", "VCC", 3, 1.0), drill("2", "GND", 5.54, 1.0)}},
+		{Ref: "MH1", Side: "top", BBox: [4]float64{20, 3, 24, 7}, Pads: []PlanPad{drill("1", "", 22, 3.2)}},
+		{Ref: "MH2", Side: "top", BBox: [4]float64{26, 13, 30, 17}, Pads: []PlanPad{drill("1", "GND", 28, 2.2)}},
+		{Ref: "J9", Side: "top", BBox: [4]float64{8, 10, 18, 18}, HeightAttr: "5mm", // RJ45-like: pegs + signal pins
+			Pads: []PlanPad{drill("P1", "", 9, 3.25), drill("1", "TX+", 12, 0.9)}},
+	}
+	o := DefaultPlanOptions()
+	o.Resolution = 0.2
+	s, err := Plan(PlanInput{Board: []Point{{0, 0}, {32, 0}, {32, 20}, {0, 20}}, Components: parts}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range s.Pillars {
+		got[p.ID] = p.Screw
+	}
+	if len(got) != 2 || got["MH1"] != "M3" || got["MH2"] != "M2" {
+		t.Fatalf("pillars %+v", s.Pillars)
+	}
+	for _, w := range s.Warnings {
+		if strings.Contains(w, "drill data") {
+			t.Fatalf("drill data was present: %v", s.Warnings)
+		}
 	}
 }
