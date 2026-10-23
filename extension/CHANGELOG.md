@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-10-24
+
 - PCB 焊盘回读新增钻孔与金属化：`pcb.components.list --includePads` 的每个焊盘带原样的 `hole`（`["ROUND", d, d]`，10 mil 单位）、`metallization` 与 `availability.hole`，`pcb dump` 保留这两项。`pcb enclosure plan` 改为按真实孔径识别安装孔（≥ 2.1 mm 且焊盘无信号网络，按孔径选 M2–M6），不再按位号 H/MH 猜——真板上 H1–H4 常是排针；缺孔数据的旧 dump 只按 HOLE/MOUNT 封装名兜底并警告。ceshi 现场回读 111 个焊盘均带孔信息。
 - `sch list --include-pins`（`schematic.components.list`）的位号撞号判断（#136）改由当前原理图的网表决定：同一位号在网表里对应多条器件记录才标 `netAmbiguous`。此前用 `getAll(undefined, true)` 比较器件身份，范围是整个工程已加载的图页；工程里有多套原理图且同位号器件不同时，会把真实器件的引脚网络全部置空，而且结果取决于页面加载顺序。2026-10-23 开源 RK3568 工程（V0.3 / V1.0 两套原理图）现场：V1.0 的 PMIC U11（4 个子部件、69 脚）全部读成空网络，官方网表导出显示正常连接；先读过 V1.0 后再重读 V0.3，V0.3 的 U11 也变空。同一原理图内网表有两条同位号记录时，旧逻辑不报歧义而是混合两颗器件的网络，现在会标出。连接器 1.14.5 在 edadesk 新开的 RK3568 窗口按原出错顺序只读复测（V0.3 PMIC 页 → V1.0 PMIC 页 → 重读 V0.3）：三次 U11 都不再标歧义，三页逐脚与官方网表导出一致（288/288、298/298、288/288）。同一原理图内真实撞号的现场形态（网表里两条同位号记录）尚无现场样本，只有离线测试覆盖。
 - 新增 `easyeda pcb enclosure plan|build`（纯离线，不新增连接器动作）：由 `pcb dump` 与 `pcb 3d models` 推导可编辑的外壳参数（沿板框或矩形、上下壳与止口、安装孔螺丝柱、板边连接器侧开口、`--top-cutout` 开孔、`--height` 高度覆盖），再栅格化生成上下壳 STL；`build` 检查器件与板体干涉、网格闭合流形与体积一致，任一不过只写 manifest 并非零退出。EDA 内置 3D 外壳无创建接口（现场画线/填充到外壳层均被拒），因此不写回工程。同期补齐：`--type slide` 推盖盒（含滑出路径检查）、上下壳自动卡扣、`--pillar` 手加螺丝柱、两件重叠检查、细于 0.8 mm 的结构警告、每次输出 `preview.png`、`--step` 输出 STEP（未经 CAD 导入验证）。`plan` 把间距小于 0.8 mm 的推导开孔合并成一个；推盖入口改从外形边开口，侧壁不再剩下细边。
@@ -17,6 +19,12 @@
 - `pcb autoroute` 默认改用官方路由器：新 typed action `pcb.route.auto` 调 `eda.pcb_Document.autoRouting`（@beta，Web 4.1.78 现场可用，与原生「自动布线」对话框同一引擎、无弹窗）。已有导线/过孔一律保留，支持 `--net`、`--ignore-net`、`--layers`、`--corner`、`--optimize`、`--timeout`；返回路由器逐网结果、新建铜计数、被删图元与丢失的锁定铜，锁定铜丢失时命令失败；画布未变且有失败网时报错（路由器 `success:true` 只表示已启动）。外部引擎改为 `--router` / `FREEROUTING_CMD` 显式启用。
 - `pcb pour-fit --replace` 只清同网**同层**的铺铜：此前按网清，先铺 TOP 再铺 BOTTOM 会把 TOP 的 GND 铺铜删掉。
 - `pcb clear`：封装内嵌过孔（QFN 散热焊盘的 `<器件id>e<n>`）不再进入过孔删除批次——它们随所属器件一起删除或保留，过孔接口删不掉它们，此前整批报错使干净的板也报 `failed:["vias"]`；返回 `skippedEmbeddedVias` 计数。用 `--project` 调用时，verify 流程的重载钉住实际应答的窗口，不再因窗口参数为空而判为窗口不一致、跳过二遍清板和最终计数。
+- 连接器 register 帧上报宿主 `navigator.userAgent`，daemon 在 `health.windows[].host` 输出 `{kind,userAgent}`（edadesk/electron/browser/unknown）；`AMBIGUOUS_PROJECT` / `STALE_WINDOW` 详情列出各候选窗口宿主。同一文档的浏览器与 edadesk 窗口不再被当作重载残留静默择一，只有 UA 相同的注册才按重复取最新。
+- 打开桌面本地库时回退专用接口并校验别名，修复桌面本地库符号编辑器无法打开（PR #281）。
+- 新增 `pcb export-3d`（`pcb.export.3d`）：经官方 beta `get3DFile` 导出绑定板版本的真实 PCB OBJ/STEP，前后完整板回读核对身份与语义哈希，保留官方文件（含 ZIP）并校验字节、哈希与网格。
+- 出板收尾三件离线规划：`pcb neckdown-plan`（进焊盘一段改窄）、`pcb teardrop-plan`（原生泪滴无创建接口，按考试允许画线条形泪滴，`--remove-from` 按旧计划删除）与泪滴尺寸修改规划、`pcb silk-plan`（按实测字框排位号与接口提示）；泪滴规划与修改共用同一间距默认值（取 clearance 与 track-track 较大值 +0.5）。
+- 实际回读图按文字类型放字形：自由字符串锚点在左上、元件属性在左下，接口提示与板名不再整体高出一个字高。
+- 块库：天线块补关系布局并默认网络标签；新增 1×4 排针供电与串口下载块（draft）。
 
 ## [1.14.0] - 2026-10-17
 
