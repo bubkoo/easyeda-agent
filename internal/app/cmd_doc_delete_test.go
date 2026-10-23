@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -168,5 +169,20 @@ func TestBoardNew_RequiresProjectAndWiresPayload(t *testing.T) {
 	}
 	if cap.action != "board.new" || cap.payload["projectUuid"] != cfg.project || cap.payload["name"] != "主板" {
 		t.Fatalf("got action=%q payload=%v", cap.action, cap.payload)
+	}
+}
+
+func TestBoardRenameHostRefusalFailsDispatch(t *testing.T) {
+	for _, tc := range []struct {
+		result  string
+		failure bool
+	}{{`{"ok":false}`, true}, {`{}`, true}, {`{"ok":true}`, false}} {
+		response := `{"ok":true,"result":` + tc.result + `}`
+		cfg, _, cleanup := newAutolayoutTestDaemon(t, func(_ int, _ autolayoutTestCall) string { return response })
+		err := dispatch(cfg, "board.rename", "", map[string]any{}, io.Discard, io.Discard)
+		cleanup()
+		if (err != nil) != tc.failure {
+			t.Fatalf("%s: err=%v", tc.result, err)
+		}
 	}
 }

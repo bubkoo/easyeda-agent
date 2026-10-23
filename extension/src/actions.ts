@@ -11606,12 +11606,19 @@ const boardNew: Handler = async (payload) => {
 
 	let boardName = created.boardName;
 	const warnings: Array<string> = [];
+	// The documents are created even when the host refuses the rename (Web 4.1.78
+	// modifyBoardName returns false), so a missed name is a partial result: the
+	// caller asked for it and must not read the call as fully applied (#151).
+	const notApplied: Array<string> = [];
 	if (wantName && wantName !== boardName) {
 		let renamed = false;
 		try { renamed = await eda.dmt_Board.modifyBoardName(boardName, wantName); }
 		catch { /* reported below */ }
 		if (renamed) boardName = wantName;
-		else warnings.push(`Board was created as "${boardName}"; renaming it to "${wantName}" failed.`);
+		else {
+			notApplied.push('name');
+			warnings.push(`Board was created as "${boardName}"; renaming it to "${wantName}" failed — rename it later or delete it with board.delete.`);
+		}
 	}
 
 	// Fresh readback: the binding, the page and the PCB must all be listed.
@@ -11640,7 +11647,9 @@ const boardNew: Handler = async (payload) => {
 					pcbUuid: created.pcbUuid,
 					pcbName: board?.pcb?.name ?? null,
 					projectUuid,
-					partial: !verified,
+					...(wantName ? { requestedName: wantName } : {}),
+					...(notApplied.length ? { notApplied } : {}),
+					partial: !verified || notApplied.length > 0,
 					verified,
 				},
 				warnings: warnings.length ? warnings : undefined,

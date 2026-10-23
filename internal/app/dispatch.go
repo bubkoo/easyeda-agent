@@ -189,6 +189,10 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	case "pcb.pour.create", "pcb.fill.create":
 		return pourBoundaryError(action, map[string]any{"primitiveId": parsed.Result.PrimitiveID,
 			"verified": parsed.Result.Verified != nil && *parsed.Result.Verified, "partial": parsed.Result.Partial})
+	case "board.rename":
+		if parsed.Result.OK == nil || !*parsed.Result.OK {
+			return fmt.Errorf("%s: the host did not rename the Board (ok=false); read board list before retrying", action)
+		}
 	case "schematic.page.rename":
 		if parsed.Result.Partial || parsed.Result.OK == nil || !*parsed.Result.OK ||
 			parsed.Result.Verified == nil || !*parsed.Result.Verified {
