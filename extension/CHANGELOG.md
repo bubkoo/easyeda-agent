@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- `sch list --include-pins`（`schematic.components.list`）的位号撞号判断（#136）改由当前原理图的网表决定：同一位号在网表里对应多条器件记录才标 `netAmbiguous`。此前用 `getAll(undefined, true)` 比较器件身份，范围是整个工程已加载的图页；工程里有多套原理图且同位号器件不同时，会把真实器件的引脚网络全部置空，而且结果取决于页面加载顺序。2026-10-23 开源 RK3568 工程（V0.3 / V1.0 两套原理图）现场：V1.0 的 PMIC U11（4 个子部件、69 脚）全部读成空网络，官方网表导出显示正常连接；先读过 V1.0 后再重读 V0.3，V0.3 的 U11 也变空。同一原理图内网表有两条同位号记录时，旧逻辑不报歧义而是混合两颗器件的网络，现在会标出。离线回归已覆盖；修复后的连接器尚未在现场验证。
 - 新增 `easyeda pcb enclosure plan|build`（纯离线，不新增连接器动作）：由 `pcb dump` 与 `pcb 3d models` 推导可编辑的外壳参数（沿板框或矩形、上下壳与止口、安装孔螺丝柱、板边连接器侧开口、`--top-cutout` 开孔、`--height` 高度覆盖），再栅格化生成上下壳 STL；`build` 检查器件与板体干涉、网格闭合流形与体积一致，任一不过只写 manifest 并非零退出。EDA 内置 3D 外壳无创建接口（现场画线/填充到外壳层均被拒），因此不写回工程。同期补齐：`--type slide` 推盖盒（含滑出路径检查）、上下壳自动卡扣、`--pillar` 手加螺丝柱、两件重叠检查、细于 0.8 mm 的结构警告、每次输出 `preview.png`、`--step` 输出 STEP（未经 CAD 导入验证）。
 - 新增 `easyeda pcb 3d` 命令组（器件 3D 模型基础操作）：`models` 只读列出每个器件的绑定模型、摆放（`3D Model Transform` 尺寸/旋转/偏移）、`Height` 与覆盖计数，`--missing` 只看未绑定；`transform`（`pcb.model3d.set_transform`）按轴修改单个器件的模型摆放；`bind`（`pcb.model3d.bind`）把单个器件实例换绑到库中已有模型；`export-shell`（`pcb.export.3d_shell`）导出官方外壳编辑器里设计的外壳（STL/STEP/OBJ）。写入只改目标键、重申位号、不写投影键，回读有其他变化即 `partial` 并附写前值。Web 4.1.78 现场验证：写命令经保存重载回读与导出 OBJ 几何核对（偏移 Z 严格验证），外壳仅验证了未设计时的报错。`PROJECTED_STATE_KEYS` 移至 `projected-keys.ts` 供复用。
 - 新增 `editor.panels`（`easyeda editor panels --left open|closed --right open|closed`）：用官方 `sys_PanelControl` 收起/展开左右侧栏，只改界面不改工程。SDK 读不到侧栏开合状态，结果报告实际调用和锁定状态；锁定的侧栏如实报告、不解锁。配合 `view fit` 居中展示。
