@@ -25,7 +25,7 @@
 - 出板收尾三件离线规划：`pcb neckdown-plan`（进焊盘一段改窄）、`pcb teardrop-plan`（原生泪滴无创建接口，按考试允许画线条形泪滴，`--remove-from` 按旧计划删除）与泪滴尺寸修改规划、`pcb silk-plan`（按实测字框排位号与接口提示）；泪滴规划与修改共用同一间距默认值（取 clearance 与 track-track 较大值 +0.5）。
 - 实际回读图按文字类型放字形：自由字符串锚点在左上、元件属性在左下，接口提示与板名不再整体高出一个字高。
 - 块库：天线块补关系布局并默认网络标签；新增 1×4 排针供电与串口下载块（draft）。
-- `board new --name` 在宿主拒绝改名时（Web 4.1.78 现场 `modifyBoardName` 返回 false）结果改为 `partial`，并带 `requestedName` 与 `notApplied:["name"]`，CLI 非零退出；此前只给警告、仍报完全成功。`board rename` 返回 `ok:false` 时 CLI 也改为非零退出。
+- 组合改名以回读为准：Web 4.1.78 现场 `modifyBoardName` 对新建组合既返回过 false，也返回过 true 而名字未变。`board new --name` 按新回读的组合列表决定实际名字，未生效时结果为 `partial` 并带 `requestedName` 与 `notApplied:["name"]`，CLI 非零退出（此前只给警告、仍报完全成功，或把未生效的名字当作结果）；`board rename` 只有回读出现新名、旧名消失才 `ok:true`，否则 CLI 非零退出，`hostReturned` 保留宿主原始回答。
 
 ## [1.14.0] - 2026-10-17
 

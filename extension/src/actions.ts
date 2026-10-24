@@ -11154,14 +11154,26 @@ const boardCreate: Handler = async (payload) => {
 const boardRename: Handler = async (payload) => {
 	const name = requireString(payload, 'name');
 	const newName = requireString(payload, 'newName');
-	let ok;
+	let hostReturned;
 	try {
-		ok = await eda.dmt_Board.modifyBoardName(name, newName);
+		hostReturned = await eda.dmt_Board.modifyBoardName(name, newName);
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to rename Board.');
 	}
-	return { result: { ok } };
+	// The host's answer is not evidence (it returned true without renaming on
+	// Web 4.1.78); success is the new name listed and the old one gone.
+	const deadline = Date.now() + 5_000;
+	let names: Array<string> = [];
+	for (;;) {
+		try { names = ((await eda.dmt_Board.getAllBoardsInfo()) ?? []).map(b => b?.name); }
+		catch { /* retry until the deadline */ }
+		const verified = names.includes(newName) && !names.includes(name);
+		if (verified || !hostReturned || Date.now() >= deadline) {
+			return { result: { ok: verified, verified, hostReturned: hostReturned === true, name, newName, boards: names } };
+		}
+		await sleep(250);
+	}
 };
 
 /** Copy a Board (its schematic + PCB) into a new Board. */
@@ -11610,15 +11622,11 @@ const boardNew: Handler = async (payload) => {
 	// modifyBoardName returns false), so a missed name is a partial result: the
 	// caller asked for it and must not read the call as fully applied (#151).
 	const notApplied: Array<string> = [];
-	if (wantName && wantName !== boardName) {
-		let renamed = false;
-		try { renamed = await eda.dmt_Board.modifyBoardName(boardName, wantName); }
-		catch { /* reported below */ }
-		if (renamed) boardName = wantName;
-		else {
-			notApplied.push('name');
-			warnings.push(`Board was created as "${boardName}"; renaming it to "${wantName}" failed — rename it later or delete it with board.delete.`);
-		}
+	const createdName = boardName;
+	let renameReturned: boolean | undefined;
+	if (wantName && wantName !== createdName) {
+		try { renameReturned = await eda.dmt_Board.modifyBoardName(createdName, wantName); }
+		catch { renameReturned = false; }
 	}
 
 	// Fresh readback: the binding, the page and the PCB must all be listed.
@@ -11628,14 +11636,24 @@ const boardNew: Handler = async (payload) => {
 	let pcbListed = false;
 	for (;;) {
 		try {
-			board = ((await eda.dmt_Board.getAllBoardsInfo()) ?? []).find(b => b?.name === boardName);
+			// The host's rename answer is not evidence (Web 4.1.78 returned both false
+			// and true-without-effect): the listed name decides which one applied.
+			const all = (await eda.dmt_Board.getAllBoardsInfo()) ?? [];
+			const renamed = wantName && wantName !== createdName ? all.find(b => b?.name === wantName) : undefined;
+			board = renamed ?? all.find(b => b?.name === createdName);
+			boardName = board?.name ?? (renameReturned ? wantName! : createdName);
 			pages = ((await eda.dmt_Schematic.getSchematicInfo(created.schematicUuid))?.page ?? []).map(p => ({ uuid: p.uuid, name: p.name }));
 			pcbListed = ((await eda.dmt_Pcb.getAllPcbsInfo()) ?? []).some(p => p.uuid === created.pcbUuid);
 		}
 		catch { /* retry until the deadline */ }
 		const verified = board?.schematic?.uuid === created.schematicUuid && board?.pcb?.uuid === created.pcbUuid
 			&& pages.some(p => p.uuid === pageUuid) && pcbListed;
-		if (verified || Date.now() >= deadline) {
+		const nameSettled = !wantName || boardName === wantName || !renameReturned;
+		if ((verified && nameSettled) || Date.now() >= deadline) {
+			if (wantName && boardName !== wantName) {
+				notApplied.push('name');
+				warnings.push(`Board was created as "${boardName}"; the host ${renameReturned ? 'reported the rename to' : 'refused to rename it to'} "${wantName}" but the readback still lists "${boardName}" — rename it later or delete it with board.delete.`);
+			}
 			if (!verified) warnings.push('Created documents did not all appear in the fresh board/document readback; inspect board.list before retrying.');
 			return {
 				result: {

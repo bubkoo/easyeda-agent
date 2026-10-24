@@ -1198,9 +1198,9 @@ func AllActions() []ActionSpec {
 			Phase:       2,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Rename a Board (板子) by its current name.",
+			Description: "Rename a Board (板子) by its current name. The host's answer is not evidence (Web 4.1.78 returned false, and true without renaming): ok/verified come from a fresh board list showing newName and not name (up to 5 s); ok=false makes the CLI exit non-zero.",
 			Inputs:      []string{"name", "newName"},
-			Outputs:     []string{"ok"},
+			Outputs:     []string{"ok", "verified", "hostReturned", "boards"},
 		},
 		{
 			Name:        "board.copy",
