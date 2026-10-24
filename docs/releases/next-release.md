@@ -29,6 +29,14 @@ CLI/daemon、连接器包、npm/lock 与 Skill 统一为 1.15.0（准备提交 `
 已知未覆盖：STEP 未经 CAD 导入；外壳螺丝柱正向识别仅单测（ceshi 无安装孔）；外壳未实际打印；
 宿主拒绝组合改名的原因待查。
 
+## 发布前核验（本地，未发布）
+
+验收材料提交为 `95034970`（manifest：result/independentReview 均为 pass）。`make release-check VERSION=v1.15.0` 通过；
+`make release-build VERSION=v1.15.0` 通过：五平台 CLI、连接器 1.15.0、`skills.tar.gz`（192 个文件）、安装脚本、
+`test-evidence.zip` 与 `checksums.txt` 生成并核对，本机 `easyeda_darwin_arm64 --version` 为 v1.15.0。尚未打 tag、未上传。
+dev CI：`e26c821f` 一次连接器测试偶发失败（#256/#257 静默窗口时序测试 `not ok 940`），`aa806afa`、`9fda0e2b` 均通过，
+本地多次 M1 通过；按偶发记录，不改判。
+
 ## v1.14.0 历史记录
 
 用户于 2026-10-17 批准发布中版本 v1.14.0。连接器运行时自 v1.13.1 起有改动（`connect_pin` 的 `via`、
