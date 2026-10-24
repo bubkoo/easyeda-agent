@@ -1,4 +1,35 @@
-# v1.14.0 发布准备
+# v1.15.0 发布准备
+
+用户于 2026-10-24 要求按 v1.15.0、有限验收范围准备发布：先修 CI 版本不一致，再写本文、跑现场验收、
+独立复核，最后再确认是否执行 `make release`（尚未批准执行）。连接器运行时自 v1.14.0 起有改动（新增
+`pcb.model3d.*`、`pcb.export.3d`/`3d_shell`、`board.new`、`pcb.document.delete`、`editor.panels`、
+`pcb.route.auto`，焊盘回读带钻孔，网表导出后连续空闲等待，上报宿主 UA），按版本规则递增 minor；
+CLI/daemon、连接器包、npm/lock 与 Skill 统一为 1.15.0（准备提交 `e26c821f`），用户需更新连接器。
+验收中发现并修复组合改名误报（`aa806afa`、`9fda0e2b`），产品源码候选为 `9fda0e2b`。
+
+## 版本范围（v1.14.0..9fda0e2b，43 个提交）
+
+- PCB 3D 与外壳：`pcb 3d models|transform|bind|export-shell`、`pcb export-3d`；离线参数化外壳
+  `pcb enclosure plan|build`（上下壳/推盖、卡扣、螺丝柱按真实钻孔、开孔合并、预览图、STL/STEP）。
+- 工程结构：`board new`、`board delete` 连带删除 PCB 与原理图并刷新工程树、`pcb doc-delete`。
+- 编辑器与宿主：`editor panels`；health 区分 edadesk/浏览器窗口，同文档跨宿主不再静默择一。
+- PCB：`pcb autoroute` 默认官方路由器；`pour-fit --replace` 只清同网同层；`rip-up`/`clear` 不碰内嵌过孔；
+  via-in-pad 按焊盘矩形；出板收尾规划（缩颈、线条形泪滴及修改、丝印）；实际回读图文字锚点。
+- 原理图：网表导出后连续空闲再返回（#256/#257）；多套原理图工程的撞号判断改按当前原理图网表。
+- 库：桌面本地库符号编辑器打开修复（PR #281）；块库新增天线关系布局与 1×4 排针块（draft）。
+- 组合：改名以回读为准——`board new --name` 未生效时报 partial（`notApplied:["name"]`）并非零退出，`board rename` 只有回读
+  出现新名才成功（验收发现：Web 4.1.78 `modifyBoardName` 对新建组合返回过 false，也返回过 true 而名字未变）。
+
+## 验收范围
+
+有限范围（schema 3，`acceptanceScope=cli-fixes`），完整设计 E2E 延期至 follow-up。现场复测本轮新增的
+3D/外壳、工程结构、宿主识别和多原理图撞号修复；其余改动以其提交时的现场记录与自动测试为准，不在本轮
+重复写板（官方自动布线、泪滴、铺铜等）。用例、结果与独立复核见 `docs/releases/evidence/v1.15.0/`。
+
+已知未覆盖：STEP 未经 CAD 导入；外壳螺丝柱正向识别仅单测（ceshi 无安装孔）；外壳未实际打印；
+宿主拒绝组合改名的原因待查。
+
+## v1.14.0 历史记录
 
 用户于 2026-10-17 批准发布中版本 v1.14.0。连接器运行时自 v1.13.1 起有改动（`connect_pin` 的 `via`、
 `schematic.group.move` 重挂网络标签、原理图同步等待按请求剩余预算），按版本规则递增 minor；CLI/daemon、
