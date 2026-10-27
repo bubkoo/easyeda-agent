@@ -45,6 +45,9 @@ dev CI：`e26c821f` 一次连接器测试偶发失败（#256/#257 静默窗口�
 `easyeda update --cli-only --version 1.15.0` 下载、校验并原子替换为 v1.15.0。
 外部 Skill 平台须分别核验：后续公开接口复查时，ClawHub 的 `latest` 仍为 1.14.0，
 查询 1.15.0 返回不存在，原“同步成功”记录不能作为当前可安装证据。
+授权账号补发 1.15.0 后，发布接口返回 `Version 1.15.0 already exists`；
+同账号的 inspect/verify 与官方 `skill tag ... 1.15.0 --tag latest` 均返回
+`Version not found`。平台侧版本记录存在矛盾，尚未恢复公开可安装，不能靠重复上传或擅自升版补证。
 SkillHub 原自动发布目标 `eda-agent-connector` 的公开下载返回 404；现已修正为
 `@user_6b95f8df/easyeda-agent-connector`，并通过
 [补发任务](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/40595144961)
