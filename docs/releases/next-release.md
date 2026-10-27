@@ -42,8 +42,15 @@ dev CI：`e26c821f` 一次连接器测试偶发失败（#256/#257 静默窗口�
 用户于 2026-10-25 批准执行 `make release VERSION=v1.15.0`。v1.15.0 于 2026-10-25 02:05:18 UTC 正式发布，非草稿、非预发布，
 附注标签绑定提交 `d93d3dd`（产品源码同候选 `9fda0e2b`，其后仅发布文档），main 已快进到该提交。十一项资产（含 checksums.txt）
 全部下载核对 SHA256 一致，下载的 darwin_arm64 报 v1.15.0；升级冒烟：已发布的 v1.14.0 二进制在临时目录经
-`easyeda update --cli-only --version 1.15.0` 下载、校验并原子替换为 v1.15.0。ClawHub 同步成功（easyeda-agent@1.15.0），
-SkillHub 自动发布工作流成功。连接器 1.15.0 需用户更新后才能用到本版连接器行为。
+`easyeda update --cli-only --version 1.15.0` 下载、校验并原子替换为 v1.15.0。
+外部 Skill 平台须分别核验：后续公开接口复查时，ClawHub 的 `latest` 仍为 1.14.0，
+查询 1.15.0 返回不存在，原“同步成功”记录不能作为当前可安装证据。
+SkillHub 原自动发布目标 `eda-agent-connector` 的公开下载返回 404；现已修正为
+`@user_6b95f8df/easyeda-agent-connector`，并通过
+[补发任务](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/40595144961)
+提交 1.15.0（`skillId=163177 status=None`）。补发后立即下载的公开包仍为 1.2.10；
+审核状态未返回，不能声明最新版已公开可安装，须待公开下载包更新后再验。
+连接器 1.15.0 需用户更新后才能用到本版连接器行为。
 
 ## v1.14.0 历史记录
 
