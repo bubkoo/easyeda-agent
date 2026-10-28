@@ -285,12 +285,19 @@ skew/spread 验收。
 ### Copper pour (铺铜)
 
 A pour is a net-bound copper region (usually GND/power plane). **The agent passes raw
-points** — the connector builds the `IPCB_Polygon` (`pcb_MathPolygon.createPolygon`)
+points or a closed native `L`/`ARC` source** — the connector builds the `IPCB_Polygon` (`pcb_MathPolygon.createPolygon`)
 and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建覆铜边框图元").
 
-- `pcb.pour.create` — pour from a closed polygon `points` (`[[x,y],…]`, mil, y-up) on a
-  copper layer, bound to a `net` (**required — a netless pour is dead copper; `pcb pour`
-  now refuses an empty `--net`, issue #34**). `fill = solid` (default) `| grid | grid45`.
+- `pcb.pour.create` — pour on a copper layer from a closed polygon `points`
+  (`[[x,y],…]`, mil, y-up) or `source`
+  (`[x0,y0,"L",x1,y1,"ARC",signedSweep,endX,endY,...,x0,y0]`, mil, y-up),
+  bound to a `net` (**required — a netless pour is dead copper; `pcb pour`
+  now refuses an empty `--net`, issue #34**).
+  The two inputs are mutually exclusive. Use `easyeda pcb pour --source '<JSON>'` for
+  native arcs; the connector checks each ARC's endpoints and signed sweep in the
+  fresh boundary instead of accepting a many-vertex approximation. An unsupported
+  command, open ring, or malformed arc is rejected before creating a primitive.
+  `fill = solid` (default) `| grid | grid45`.
   创建后按精确 ID fresh 回读边界的网、层、填充方式、几何和明确提供的名称、优先级、线宽。
   `verified:true` 只证明边界参数兑现；`poured` 独立报告重建返回值，实际铜须再读
   `pcb poured-list`，连通与制造质量另做 DRC。`poured:false` 或空铜本身不证明算法故障。
