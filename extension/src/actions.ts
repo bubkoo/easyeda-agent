@@ -6147,9 +6147,42 @@ function equivalentLinearRegionGeometry(requested: unknown, actual: unknown): bo
 
 type NativeRegionSegment = { kind: 'L' | 'ARC'; start: [number, number]; end: [number, number]; sweep?: number };
 
-/** Preserve native arcs when checking a pour. Sampled points/area could hide a lost or reversed ARC. */
+/** A native contour below this area (mil²) does not bound a real copper region. */
+const NATIVE_REGION_MIN_AREA = 1e-6;
+
+/**
+ * Drop repeated terminal closing vertices; reject internal zero-length edges.
+ *
+ * The host may repeat the first vertex after save/reload. That is an encoding
+ * difference, not geometry, so a trailing zero-length `L` that repeats the
+ * already closed start point is normalized away. A zero-length edge anywhere
+ * else is malformed and stays fail-closed.
+ */
+function normalizeNativeRegionSegments(segments: NativeRegionSegment[], start: [number, number]): NativeRegionSegment[] | null {
+	let end = segments.length;
+	while (end > 0) {
+		const last = segments[end - 1];
+		if (last.kind !== 'L' || !sameRegionVertex(last.start, last.end)) break;
+		const previous = segments[end - 2];
+		if (!previous || !sameRegionVertex(previous.end, start) || !sameRegionVertex(last.start, start)) return null;
+		end--;
+	}
+	const kept = segments.slice(0, end);
+	if (kept.some(segment => segment.kind === 'L' && sameRegionVertex(segment.start, segment.end))) return null;
+	return kept.length >= 2 ? kept : null;
+}
+
+/**
+ * Decode one closed native L/ARC contour into its segments.
+ *
+ * The request contract is one flat contour array; the host readback is unwrapped
+ * by `nativeReadbackSegments`. Preserve native arcs when checking a pour:
+ * sampled points/area could hide a lost or reversed ARC.
+ */
 function nativeRegionSegments(source: unknown): NativeRegionSegment[] | null {
-	if (!Array.isArray(source) || !sourceIsClosed(source) || !polygonSourceToPoints(source).points) return null;
+	if (!Array.isArray(source) || !sourceIsClosed(source)) return null;
+	const decoded = polygonSourceToPoints(source);
+	if (!decoded.points || polygonArea(decoded.points) <= NATIVE_REGION_MIN_AREA) return null;
 	const segments: NativeRegionSegment[] = [];
 	let current: [number, number] = [source[0] as number, source[1] as number];
 	let i = 2;
@@ -6160,7 +6193,6 @@ function nativeRegionSegments(source: unknown): NativeRegionSegment[] | null {
 			while (i + 1 < source.length && typeof source[i] === 'number' && Number.isFinite(source[i])
 				&& typeof source[i + 1] === 'number' && Number.isFinite(source[i + 1])) {
 				const end: [number, number] = [source[i++] as number, source[i++] as number];
-				if (sameRegionVertex(current, end)) return null;
 				segments.push({ kind: 'L', start: current, end });
 				current = end;
 				count++;
@@ -6178,12 +6210,26 @@ function nativeRegionSegments(source: unknown): NativeRegionSegment[] | null {
 		}
 		else return null;
 	}
-	return segments.length >= 3 ? segments : null;
+	return normalizeNativeRegionSegments(segments, [source[0] as number, source[1] as number]);
+}
+
+/**
+ * Decode the host's boundary readback. The host may return the contour wrapped
+ * in one array; unwrap exactly that single contour. A multi-contour readback is
+ * a different shape and stays fail-closed.
+ */
+function nativeReadbackSegments(actual: unknown): NativeRegionSegment[] | null {
+	if (!Array.isArray(actual)) return null;
+	if (Array.isArray(actual[0])) {
+		if (actual.length !== 1) return null;
+		return nativeRegionSegments(actual[0]);
+	}
+	return nativeRegionSegments(actual);
 }
 
 function equivalentNativeRegionGeometry(requested: unknown, actual: unknown): boolean {
 	const expected = nativeRegionSegments(requested);
-	const observed = nativeRegionSegments(actual);
+	const observed = nativeReadbackSegments(actual);
 	if (!expected || !observed || expected.length !== observed.length) return false;
 	// EDA may rotate the starting segment or reverse the winding. Its persisted
 	// coordinates can be rounded to 0.01mil, so allow only that quantization.

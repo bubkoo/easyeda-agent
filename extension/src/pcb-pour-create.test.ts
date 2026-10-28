@@ -60,6 +60,58 @@ for (const [label, payload] of [
 	});
 }
 
+const circleSource: Array<string | number> = [0, 0, 'ARC', 180, 100, 0, 'ARC', 180, 0, 0];
+const halfDiscSource: Array<string | number> = [0, 0, 'ARC', 180, 100, 0, 'L', 0, 0];
+
+// [label, requested source, host readback source, verified]
+const nativeReadbackCases: Array<[string, Array<string | number>, unknown, boolean]> = [
+	['circle', circleSource, circleSource, true],
+	['semicircle', halfDiscSource, halfDiscSource, true],
+	['circle rotated start', circleSource, [100, 0, 'ARC', 180, 0, 0, 'ARC', 180, 100, 0], true],
+	['circle reversed winding', circleSource, [0, 0, 'ARC', -180, 100, 0, 'ARC', -180, 0, 0], true],
+	['nested contour readback', arcSource, [arcSource], true],
+	['repeated closing vertex readback', arcSource, [...arcSource, 0, 0], true],
+	['multi-contour readback', arcSource, [arcSource, arcSource], false],
+	['circle altered sweep', circleSource, [0, 0, 'ARC', 180, 100, 0, 'ARC', -180, 0, 0], false],
+	['circle shifted endpoint', circleSource, [0, 0, 'ARC', 180, 100.03, 0, 'ARC', 180, 0, 0], false],
+];
+
+for (const [label, requested, actual, verified] of nativeReadbackCases) {
+	test(`native contour pour readback ${label}`, async t => {
+		let creates = 0, rebuilds = 0;
+		(globalThis as any).eda = {
+			pcb_MathPolygon: { createPolygon: (source: unknown) => {
+				assert.deepEqual(source, requested, 'constructor must receive the original native source');
+				return { getSource: () => source };
+			} },
+			pcb_PrimitivePour: {
+				create: async () => { creates++; return primitive(expected); },
+				getAll: async () => [primitive({ ...expected, ComplexPolygon: { getSource: () => actual } },
+					async () => { rebuilds++; return true; })],
+			},
+		};
+		t.after(() => { delete (globalThis as any).eda; });
+		const { result }: any = await runAction('pcb.pour.create', { source: requested, net: 'GND', name: 'GROUND', lineWidth: 0.2 });
+		assert.equal(creates, 1);
+		assert.equal(result.verified, verified);
+		assert.equal(rebuilds, verified ? 1 : 0);
+		if (!verified) assert.deepEqual(result.differences, ['geometry']);
+	});
+}
+
+for (const [label, source] of [
+	['internal zero-length edge', [0, 0, 'L', 100, 0, 100, 0, 100, 100, 0, 100, 0, 0]],
+	['degenerate zero-area contour', [0, 0, 'L', 100, 0, 'L', 50, 0, 0, 0]],
+	['nested request source', [[0, 0, 'L', 100, 0, 100, 100, 0, 100, 0, 0]]],
+] as const) {
+	test(`native contour pour rejects ${label} before host write`, async t => {
+		(globalThis as any).eda = {};
+		t.after(() => { delete (globalThis as any).eda; });
+		await assert.rejects(() => runAction('pcb.pour.create', { source, net: 'GND' }),
+			(error: any) => ['MISSING_PAYLOAD_FIELD', 'PRECONDITION_REFUSED'].includes(error.code));
+	});
+}
+
 for (const field of ['LineWidth', 'Net', 'Layer', 'PourFillMethod', 'PourName', 'geometry'] as const) {
 	test(`pour create rejects fresh ${field} mismatch despite matching create echo`, async t => {
 		let creates = 0, rebuilds = 0, reads = 0;

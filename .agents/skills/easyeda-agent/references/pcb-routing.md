@@ -297,6 +297,12 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
   native arcs; the connector checks each ARC's endpoints and signed sweep in the
   fresh boundary instead of accepting a many-vertex approximation. An unsupported
   command, open ring, or malformed arc is rejected before creating a primitive.
+  The request `source` is one flat closed contour; the fresh readback may return it
+  wrapped in a single contour array or with the terminal closing vertex repeated, and
+  both are read as the same geometry. A two-segment contour (two arcs for a circle,
+  or an arc and a line for a semicircle) is
+  accepted. A multi-contour readback, an internal zero-length edge, or a zero-area
+  contour stays fail-closed.
   `fill = solid` (default) `| grid | grid45`.
   创建后按精确 ID fresh 回读边界的网、层、填充方式、几何和明确提供的名称、优先级、线宽。
   `verified:true` 只证明边界参数兑现；`poured` 独立报告重建返回值，实际铜须再读
