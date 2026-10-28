@@ -303,6 +303,9 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
   or an arc and a line for a semicircle) is
   accepted. A multi-contour readback, an internal zero-length edge, or a zero-area
   contour stays fail-closed.
+  Web 4.1.78 定向现场已验证双 ARC 圆、ARC+L 半圆、混合 L/ARC 与原有 points
+  矩形：生成实际铜，保存重载后按精确 ID 回读边界与铜对象，原生 DRC 0 违例。
+  宿主返回反向绕行编码；数组包装与重复闭合点仅离线覆盖。此范围不代替目标板的独立验收。
   `fill = solid` (default) `| grid | grid45`.
   创建后按精确 ID fresh 回读边界的网、层、填充方式、几何和明确提供的名称、优先级、线宽。
   `verified:true` 只证明边界参数兑现；`poured` 独立报告重建返回值，实际铜须再读
